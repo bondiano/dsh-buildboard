@@ -14,10 +14,6 @@ An interactive whiteboard for DeepSeek Harness: sticky notes, shapes, text cards
 | ------------------------------------------------ | ------------------------------------------------------ |
 | ![Agent edit](docs/screenshots/3-agent-edit.png) | ![Start project](docs/screenshots/4-start-project.png) |
 
-| Settings                                     |
-| -------------------------------------------- |
-| ![Settings](docs/screenshots/5-settings.png) |
-
 ## Features
 
 - **Start-screen card.** "Cult Canvas" opens the board as a right-sidebar tab; it stays docked next to the conversation while the agent works.
