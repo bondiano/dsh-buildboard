@@ -1,0 +1,11 @@
+# Cult Canvas bundle: registers the interactive whiteboard canvas and
+# node-based media generation pipeline for DeepSeek Harness.
+- insert:
+    - id: cult-canvas
+      name: "@local/dsh-cult-canvas"
+      config:
+        defaultCanvasWidth: 8192
+        defaultCanvasHeight: 8192
+        maxElements: 5000
+        snapToGrid: true
+        gridSize: 20

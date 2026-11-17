@@ -1,0 +1,7 @@
+{
+	"meta": {
+		"title": "无限画布",
+		"description": "结合了 cult-canvas 空间白板与 dsh-infinite_canvas 节点式媒体生成管线的 DeepSeek Harness 交互式画布插件。",
+		"detail": "README.md"
+	}
+}

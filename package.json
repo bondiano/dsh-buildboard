@@ -1,0 +1,67 @@
+{
+	"name": "@local/dsh-cult-canvas",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Interactive whiteboard canvas combining cult-canvas spatial whiteboard with dsh-infinite_canvas node-based media generation pipeline for DeepSeek Harness.",
+	"exports": {
+		".": "./dist/index.js",
+		"./client": "./dist/client.js",
+		"./locale/*.json": "./locale/*.json",
+		"./icon": "./icon.svg"
+	},
+	"files": [
+		"dist/*.js",
+		"cordis.patch.yml",
+		"locale/*.json",
+		"docs",
+		"CONTRIBUTING.md",
+		"README.md",
+		"icon.svg",
+		"LICENSE"
+	],
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		},
+		"client": {
+			"platform": "web",
+			"immediately": true,
+			"inject": [
+				"@deepseek-ai/dsh-client-ui-tool"
+			]
+		}
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/bondiano/dsh-cult-canvas.git"
+	},
+	"homepage": "https://github.com/bondiano/dsh-cult-canvas#readme",
+	"bugs": {
+		"url": "https://github.com/bondiano/dsh-cult-canvas/issues"
+	},
+	"license": "MIT",
+	"engines": {
+		"node": ">=22.13.0"
+	},
+	"scripts": {
+		"build": "tsc",
+		"typecheck": "tsc --noEmit",
+		"test": "npm run build && node --test dist/test/*.test.js dist/test/e2e/*.test.js",
+		"lint": "oxlint --deny-warnings .",
+		"lint:fix": "oxlint --fix --deny-warnings .",
+		"format": "oxfmt --write .",
+		"format:check": "oxfmt --check .",
+		"check": "npm run format:check && npm run lint && npm run typecheck && npm test",
+		"prepare": "npm run build",
+		"prepack": "npm run build"
+	},
+	"devDependencies": {
+		"@types/node": "22.18.6",
+		"@types/react": "19.3.0",
+		"oxfmt": "0.78.0",
+		"oxlint": "1.93.0",
+		"oxlint-tsgolint": "7.0.2006",
+		"typescript": "7.0.2"
+	}
+}
