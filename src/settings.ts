@@ -1,99 +1,79 @@
 /**
- * Host-half plugin settings for DSH Cult Canvas.
- *
- * Every field is `.volatile()`: it lives in the user's settings document and is
- * projected to the browser, but never joins the profile composition layer. The
- * automatic settings page stays disabled in `apply` via
- * `settings.configure({ auto: false })` — the Client half draws the card in
- * `plugins.bundle.config`, and a second page would duplicate it.
- *
- * @module @local/dsh-cult-canvas/src/settings
+ * Host-half plugin settings for Buildboard.
+ * Volatile fields live in the user settings document, not the profile.
  */
-
 import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 
-/** Settings namespace; equals the entry id in cordis.patch.yml. */
-export const SETTINGS_NAMESPACE = "cult-canvas";
+export const SETTINGS_NAMESPACE = "buildboard";
 
-/** Media generation backends the pipeline can drive. */
-export const GENERATION_PROVIDERS = ["mock", "openai", "wanx"] as const;
-
-/** Selected media generation backend. */
-export type GenerationProviderName = (typeof GENERATION_PROVIDERS)[number];
-
-/**
- * Live configuration of the plugin.
- *
- * Volatile fields are browser preferences, not profile fields: the Host accepts
- * them through the settings form and keeps them out of cordis.patch.yml.
- */
 export interface Config {
-	/** Default canvas width used when a document does not carry one. */
-	defaultCanvasWidth: Volatile<number>;
-	/** Default canvas height used when a document does not carry one. */
-	defaultCanvasHeight: Volatile<number>;
-	/** Hard cap on elements in one board. */
-	maxElements: Volatile<number>;
-	/** Whether drags and resizes snap to `gridSize`. */
-	snapToGrid: Volatile<boolean>;
-	/** Grid step in world units. */
-	gridSize: Volatile<number>;
-	/** Media generation backend. */
-	generationProvider: Volatile<GenerationProviderName>;
-	/** API key for the selected backend. */
-	generationApiKey: Volatile<string>;
-	/** Base URL override for the selected backend. */
-	generationBaseUrl: Volatile<string>;
+	maxCards: Volatile<number>;
+	maxBoards: Volatile<number>;
+	pollIntervalMs: Volatile<number>;
+	tldrawLicenseKey: Volatile<string>;
 }
 
-/**
- * Schemastery schema of the plugin configuration.
- *
- * The schema type is inferred rather than annotated `z<Config>`: Cordis resolves
- * `volatile()` to `Volatile<T>` on the Host side, while the Client form receives
- * the already-resolved JSON value over the wire.
- */
 export const Config = z.object({
-	defaultCanvasWidth: z
-		.natural()
-		.min(100)
-		.max(100_000)
-		.default(8192)
-		.volatile(),
-	defaultCanvasHeight: z
-		.natural()
-		.min(100)
-		.max(100_000)
-		.default(8192)
-		.volatile(),
-	maxElements: z.natural().min(1).max(50_000).default(5000).volatile(),
-	snapToGrid: z.boolean().default(true).volatile(),
-	gridSize: z.natural().min(1).max(500).default(20).volatile(),
-	generationProvider: z
-		.union([...GENERATION_PROVIDERS])
-		.default("mock")
-		.volatile(),
-	generationApiKey: z.string().default("").volatile(),
-	generationBaseUrl: z.string().default("").volatile(),
+	maxCards: z.natural().min(1).max(100_000).default(10_000).volatile(),
+	maxBoards: z.natural().min(1).max(5_000).default(200).volatile(),
+	pollIntervalMs: z.natural().min(250).max(30_000).default(2_000).volatile(),
+	tldrawLicenseKey: z.string().default("").volatile(),
 });
 
-/** Value the Client form reads over the wire from the namespace. */
-export interface CanvasSettings {
-	/** Resolved default canvas width. */
-	defaultCanvasWidth: number;
-	/** Resolved default canvas height. */
-	defaultCanvasHeight: number;
-	/** Resolved element cap. */
-	maxElements: number;
-	/** Resolved snap preference. */
-	snapToGrid: boolean;
-	/** Resolved grid step. */
-	gridSize: number;
-	/** Resolved generation backend. */
-	generationProvider: GenerationProviderName;
-	/** Resolved generation API key. */
-	generationApiKey: string;
-	/** Resolved generation base URL. */
-	generationBaseUrl: string;
+export interface BuildboardSettings {
+	maxCards: number;
+	maxBoards: number;
+	pollIntervalMs: number;
+	tldrawLicenseKey: string;
+}
+
+export const DEFAULT_SETTINGS: Readonly<BuildboardSettings> = Object.freeze({
+	maxCards: 10_000,
+	maxBoards: 200,
+	pollIntervalMs: 2_000,
+	tldrawLicenseKey: "",
+});
+
+export function resolveSettings(raw: unknown): BuildboardSettings {
+	const input =
+		typeof raw === "object" && raw !== null && !Array.isArray(raw)
+			? (raw as Record<string, unknown>)
+			: {};
+	return {
+		maxCards: clampInt(
+			input["maxCards"],
+			1,
+			100_000,
+			DEFAULT_SETTINGS.maxCards,
+		),
+		maxBoards: clampInt(
+			input["maxBoards"],
+			1,
+			5_000,
+			DEFAULT_SETTINGS.maxBoards,
+		),
+		pollIntervalMs: clampInt(
+			input["pollIntervalMs"],
+			250,
+			30_000,
+			DEFAULT_SETTINGS.pollIntervalMs,
+		),
+		tldrawLicenseKey:
+			typeof input["tldrawLicenseKey"] === "string"
+				? input["tldrawLicenseKey"].slice(0, 512)
+				: "",
+	};
+}
+
+function clampInt(
+	value: unknown,
+	min: number,
+	max: number,
+	fallback: number,
+): number {
+	const parsed =
+		typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+	if (typeof parsed !== "number" || !Number.isInteger(parsed)) return fallback;
+	return Math.min(max, Math.max(min, parsed));
 }

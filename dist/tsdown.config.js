@@ -2,17 +2,16 @@ import { readFileSync } from "node:fs";
 import { defineConfig } from "tsdown";
 const { name } = JSON.parse(readFileSync(new URL("package.json", import.meta.url), "utf8"));
 /**
- * Client-сборка: один CJS-чанк в формате ленивой таблицы модулей Harness.
+ * Client build: CJS module-table factory for the Harness loader.
  *
- * Загрузчик исполняет client-entry как classic script, поэтому бандл открывает
- * фабрику сам и возвращает ровно то, что даёт `clientPluginFactory`: React
- * приходит из таблицы модулей через `require`, а не бандлится. `xstate`
- * бандлится (его нет в таблице), `react`/`react-dom` остаются внешними.
- *
- * Host-половина собирается tsc в `dist/`, поэтому entry один.
+ * The loader runs the entry as a classic script, so the banner opens the
+ * factory. React stays external (platform table); tldraw and xstate are bundled.
+ * Code splitting stays off until the chunk + require.async path is verified in
+ * the live desktop app; the board mounts behind a dynamic import() that the
+ * single-chunk build still inlines.
  */
 export default defineConfig({
-    entry: { client: "src/presentation/client.ts" },
+    entry: { client: "src/client/index.ts" },
     platform: "browser",
     format: "cjs",
     target: "es2022",
@@ -20,7 +19,10 @@ export default defineConfig({
     outExtensions: () => ({ js: ".js" }),
     clean: false,
     dts: false,
-    deps: { neverBundle: ["react", "react-dom"], alwaysBundle: ["xstate"] },
+    deps: {
+        neverBundle: ["react", "react-dom", "react/jsx-runtime"],
+        alwaysBundle: ["tldraw", "xstate", "@tldraw/editor", "@tldraw/store"],
+    },
     inputOptions: { platform: "browser" },
     banner: `window.__ModuleLoader__.load({id:${JSON.stringify(name)},factory(require){const exports = {}; const module = { exports };`,
     footer: "return module.exports.clientPluginFactory ? module.exports.clientPluginFactory(require) : module.exports; }});",

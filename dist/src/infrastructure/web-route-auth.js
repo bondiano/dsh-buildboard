@@ -37,18 +37,12 @@ function admission(ctx, server, request) {
             const rawOrigin = headers.origin;
             if (rawOrigin !== undefined) {
                 const origins = Array.isArray(rawOrigin) ? rawOrigin : [rawOrigin];
-                if (origins.length === 0) {
+                if (origins.length === 0)
                     return { status: 403 };
-                }
                 for (const origin of origins) {
-                    if (typeof origin !== "string" || !origin.trim()) {
-                        return { status: 403 };
-                    }
                     try {
-                        const parsed = new URL(origin);
-                        if (parsed.protocol !== "dsh-app:" && !loopback(parsed.hostname)) {
+                        if (!loopback(new URL(origin).hostname))
                             return { status: 403 };
-                        }
                     }
                     catch {
                         return { status: 403 };
@@ -57,93 +51,37 @@ function admission(ctx, server, request) {
             }
             return { required: false };
         }
-        if (typeof connection?.requestRejection !== "function") {
-            return { status: 503 };
-        }
-        const status = connection.requestRejection(request);
-        return status === undefined
-            ? { required: true }
-            : { status: status === 403 ? 403 : 401 };
+        const rejected = connection?.requestRejection?.({ headers });
+        if (typeof rejected === "number")
+            return { status: rejected };
+        return { required: true };
     }
     catch {
-        ctx.logger?.warn?.("private web route authentication failed");
-        return { status: 503 };
+        return { status: 500 };
     }
 }
-function legacyHeaders(server, original) {
-    const origin = new URL(server.getOrigin());
-    origin.hostname = "127.0.0.1";
-    const headers = { ...original, host: origin.host };
-    if (headers.origin !== undefined)
-        headers.origin = origin.origin;
-    return headers;
-}
-function nodeRequest(request, headers) {
-    return new Proxy(request, {
-        get(target, key) {
-            if (key === "headers")
-                return headers;
-            const value = Reflect.get(target, key, target);
-            return typeof value === "function" ? value.bind(target) : value;
-        },
-    });
-}
-/** Protect private plugin routes with native DSH admission before adapting legacy loopback guards.
- * The facade leaves the host server and private-only desktop transports unchanged.
- */
+/** Wrap a webServer so every registered handler is gated. */
 export function authenticatedWebServer(ctx, server) {
     if (!server)
-        return server;
-    return new Proxy(server, {
-        get(target, key) {
-            if (key !== "register") {
-                const value = Reflect.get(target, key, target);
-                return typeof value === "function" ? value.bind(target) : value;
-            }
-            return (route) => {
-                const wrapped = { ...route };
-                if (route.handler) {
-                    wrapped.handler = (request, response, ...args) => {
-                        const result = admission(ctx, target, request);
-                        if (result.status) {
-                            response.writeHead(result.status, {
-                                "content-type": "text/plain; charset=utf-8",
-                                "cache-control": "no-store",
-                            });
-                            response.end(result.status === 503
-                                ? "authentication unavailable"
-                                : "access denied");
-                            return;
-                        }
-                        return route.handler(result.required
-                            ? nodeRequest(request, legacyHeaders(target, request.headers))
-                            : request, response, ...args);
-                    };
-                }
-                if (typeof route.resource === "function") {
-                    wrapped.resource = (request, ...args) => {
-                        const original = Object.fromEntries(request.headers);
-                        const result = admission(ctx, target, { headers: original });
-                        if (result.status) {
-                            return new Response(result.status === 503
-                                ? "authentication unavailable"
-                                : "access denied", {
-                                status: result.status,
-                                headers: {
-                                    "content-type": "text/plain; charset=utf-8",
-                                    "cache-control": "no-store",
-                                },
-                            });
-                        }
-                        return route.resource(result.required
-                            ? new Request(request, {
-                                headers: legacyHeaders(target, original),
-                            })
-                            : request, ...args);
-                    };
-                }
-                return target.register(wrapped);
-            };
+        return undefined;
+    return {
+        host: server.host,
+        register(route) {
+            const handler = route.handler;
+            if (!handler)
+                return server.register(route);
+            return server.register({
+                ...route,
+                handler(req, res) {
+                    const result = admission(ctx, server, req);
+                    if (result.status !== undefined) {
+                        res.writeHead(result.status, { "content-type": "text/plain" });
+                        res.end(result.status === 403 ? "Forbidden" : "Error");
+                        return;
+                    }
+                    return handler(req, res);
+                },
+            });
         },
-    });
+    };
 }

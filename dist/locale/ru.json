@@ -1,0 +1,19 @@
+{
+    "tab.title": "Buildboard",
+    "guide.description": "Карточки, доски и исследования агентом — правки вживую",
+    "badge.agent": "агент",
+    "toolbar.research": "Исследовать",
+    "toolbar.implement": "Имплементировать",
+    "toolbar.fullscreen": "На весь экран",
+    "library.title": "Карточки",
+    "library.project": "Проект",
+    "library.global": "Глобальные",
+    "boards.title": "Доски",
+    "runs.title": "Запуски",
+    "settings.title": "Buildboard",
+    "settings.maxCards": "Лимит карточек",
+    "settings.maxBoards": "Лимит досок",
+    "settings.pollIntervalMs": "Интервал опроса (мс)",
+    "settings.tldrawLicenseKey": "Ключ лицензии tldraw",
+    "settings.error": "Не удалось сохранить настройку"
+}

@@ -1,7 +1,19 @@
 {
-	"meta": {
-		"title": "无限画布",
-		"description": "结合了 cult-canvas 空间白板与 dsh-infinite_canvas 节点式媒体生成管线的 DeepSeek Harness 交互式画布插件。",
-		"detail": "README.md"
-	}
+	"tab.title": "Buildboard",
+	"guide.description": "卡片、白板与代理研究 — 实时协作",
+	"badge.agent": "代理",
+	"toolbar.research": "研究",
+	"toolbar.implement": "实现",
+	"toolbar.fullscreen": "全屏",
+	"library.title": "卡片",
+	"library.project": "项目",
+	"library.global": "全局",
+	"boards.title": "白板",
+	"runs.title": "运行",
+	"settings.title": "Buildboard",
+	"settings.maxCards": "卡片上限",
+	"settings.maxBoards": "白板上限",
+	"settings.pollIntervalMs": "轮询间隔 (ms)",
+	"settings.tldrawLicenseKey": "tldraw 许可密钥",
+	"settings.error": "无法保存设置"
 }

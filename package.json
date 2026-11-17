@@ -1,9 +1,9 @@
 {
-	"name": "@local/dsh-cult-canvas",
-	"version": "0.1.0",
+	"name": "@local/dsh-buildboard",
+	"version": "0.2.0",
 	"private": true,
 	"type": "module",
-	"description": "Interactive whiteboard canvas combining cult-canvas spatial whiteboard with dsh-infinite_canvas node-based media generation pipeline for DeepSeek Harness.",
+	"description": "Heptabase-style whiteboard for DeepSeek Harness: cards, documents, agent research and implementation workflows on tldraw + xstate.",
 	"exports": {
 		".": "./dist/index.js",
 		"./client": "./lib/client.js",
@@ -16,7 +16,6 @@
 		"cordis.patch.yml",
 		"locale/*.json",
 		"docs",
-		"CONTRIBUTING.md",
 		"README.md",
 		"README.ru.md",
 		"icon.svg",
@@ -33,6 +32,7 @@
 				"@deepseek-ai/dsh-api-remotes",
 				"@deepseek-ai/dsh-client-connection",
 				"@deepseek-ai/dsh-client-locale",
+				"@deepseek-ai/dsh-client-ui-layout",
 				"@deepseek-ai/dsh-client-ui-settings",
 				"@deepseek-ai/dsh-client-ui-sidebar-right",
 				"@deepseek-ai/dsh-client-ui-workspace"
@@ -41,11 +41,11 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/bondiano/dsh-cult-canvas.git"
+		"url": "git+https://github.com/bondiano/dsh-buildboard.git"
 	},
-	"homepage": "https://github.com/bondiano/dsh-cult-canvas#readme",
+	"homepage": "https://github.com/bondiano/dsh-buildboard#readme",
 	"bugs": {
-		"url": "https://github.com/bondiano/dsh-cult-canvas/issues"
+		"url": "https://github.com/bondiano/dsh-buildboard/issues"
 	},
 	"license": "MIT",
 	"engines": {
@@ -54,27 +54,32 @@
 	"scripts": {
 		"build": "tsc",
 		"typecheck": "tsc --noEmit",
-		"test": "npm run build && node --test dist/test/*.test.js dist/test/e2e/*.test.js",
+		"test": "npm run build && node --test dist/test/unit/*.test.js",
+		"test:e2e": "playwright test",
 		"lint": "oxlint --deny-warnings .",
 		"lint:fix": "oxlint --fix --deny-warnings .",
 		"format": "oxfmt --write .",
 		"format:check": "oxfmt --check .",
-		"check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build:client",
+		"check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build:client && npm run test:e2e",
 		"build:client": "tsdown"
 	},
 	"devDependencies": {
 		"@deepseek-ai/cordis": "4.1.0",
+		"@playwright/test": "1.58.2",
 		"@types/node": "22.18.6",
-		"@types/react": "19.3.0",
+		"@types/react": "18.3.12",
+		"@types/react-dom": "18.3.1",
 		"oxfmt": "0.78.0",
 		"oxlint": "1.93.0",
 		"oxlint-tsgolint": "7.0.2006",
+		"react": "18.3.1",
+		"react-dom": "18.3.1",
 		"tsdown": "0.23.7",
-		"typescript": "7.0.2",
-		"xstate": "5.33.4"
+		"typescript": "5.9.2"
 	},
 	"dependencies": {
 		"@deepseek-ai/schemastery": "3.19.0",
+		"tldraw": "3.15.1",
 		"xstate": "5.33.4"
 	}
 }

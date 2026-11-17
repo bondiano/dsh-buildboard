@@ -1,17 +1,24 @@
 import { isIP } from "node:net";
-import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 import type {
-	Disposer,
-	HostContext,
-	WebServer,
-	WebRoute,
-} from "../domain/types.js";
+	IncomingHttpHeaders,
+	IncomingMessage,
+	ServerResponse,
+} from "node:http";
 
 export interface WebConnection {
 	allowsRemoteAuthorities?: boolean;
 	requestRejection?(request: {
 		headers: IncomingHttpHeaders;
 	}): number | undefined;
+}
+
+export interface WebServer {
+	host?: string | null;
+	register(route: {
+		kind: "exact" | "prefix";
+		path: string;
+		handler?: (req: IncomingMessage, res: ServerResponse) => unknown;
+	}): () => void;
 }
 
 export interface WebAuthContext {
@@ -46,17 +53,15 @@ export function loopback(host: string | undefined | null): boolean {
 	);
 }
 
-function connectionFor(
-	ctx: WebAuthContext | HostContext,
-): WebConnection | undefined {
+function connectionFor(ctx: WebAuthContext): WebConnection | undefined {
 	return (
 		(typeof ctx.get === "function" ? ctx.get("connection") : undefined) ??
-		(ctx as WebAuthContext).connection
+		ctx.connection
 	);
 }
 
 function admission(
-	ctx: WebAuthContext | HostContext,
+	ctx: WebAuthContext,
 	server: WebServer,
 	request: { headers: IncomingHttpHeaders },
 ): Admission {
@@ -65,29 +70,19 @@ function admission(
 		if (headers["sec-fetch-site"] === "cross-site") {
 			return { status: 403 };
 		}
-
 		const connection = connectionFor(ctx);
 		const required =
 			Boolean(process.env.WORKSTATION_DSH_LAN_AUTHORITY?.trim()) ||
 			connection?.allowsRemoteAuthorities === true ||
 			(server.host != null && !loopback(server.host));
-
 		if (!required) {
 			const rawOrigin = headers.origin;
 			if (rawOrigin !== undefined) {
 				const origins = Array.isArray(rawOrigin) ? rawOrigin : [rawOrigin];
-				if (origins.length === 0) {
-					return { status: 403 };
-				}
+				if (origins.length === 0) return { status: 403 };
 				for (const origin of origins) {
-					if (typeof origin !== "string" || !origin.trim()) {
-						return { status: 403 };
-					}
 					try {
-						const parsed = new URL(origin);
-						if (parsed.protocol !== "dsh-app:" && !loopback(parsed.hostname)) {
-							return { status: 403 };
-						}
+						if (!loopback(new URL(origin).hostname)) return { status: 403 };
 					} catch {
 						return { status: 403 };
 					}
@@ -95,121 +90,37 @@ function admission(
 			}
 			return { required: false };
 		}
-
-		if (typeof connection?.requestRejection !== "function") {
-			return { status: 503 };
-		}
-		const status = connection.requestRejection(request);
-		return status === undefined
-			? { required: true }
-			: { status: status === 403 ? 403 : 401 };
+		const rejected = connection?.requestRejection?.({ headers });
+		if (typeof rejected === "number") return { status: rejected };
+		return { required: true };
 	} catch {
-		ctx.logger?.warn?.("private web route authentication failed");
-		return { status: 503 };
+		return { status: 500 };
 	}
 }
 
-function legacyHeaders(
-	server: WebServer,
-	original: Record<string, string>,
-): Record<string, string>;
-function legacyHeaders(
-	server: WebServer,
-	original: IncomingHttpHeaders,
-): IncomingHttpHeaders;
-function legacyHeaders(
-	server: WebServer,
-	original: IncomingHttpHeaders,
-): IncomingHttpHeaders {
-	const origin = new URL(server.getOrigin());
-	origin.hostname = "127.0.0.1";
-	const headers: IncomingHttpHeaders = { ...original, host: origin.host };
-	if (headers.origin !== undefined) headers.origin = origin.origin;
-	return headers;
-}
-
-function nodeRequest(
-	request: IncomingMessage,
-	headers: IncomingHttpHeaders,
-): IncomingMessage {
-	return new Proxy(request, {
-		get(target, key) {
-			if (key === "headers") return headers;
-			const value = Reflect.get(target, key, target);
-			return typeof value === "function" ? value.bind(target) : value;
+/** Wrap a webServer so every registered handler is gated. */
+export function authenticatedWebServer(
+	ctx: WebAuthContext,
+	server: WebServer | undefined,
+): WebServer | undefined {
+	if (!server) return undefined;
+	return {
+		host: server.host,
+		register(route) {
+			const handler = route.handler;
+			if (!handler) return server.register(route);
+			return server.register({
+				...route,
+				handler(req, res) {
+					const result = admission(ctx, server, req);
+					if (result.status !== undefined) {
+						res.writeHead(result.status, { "content-type": "text/plain" });
+						res.end(result.status === 403 ? "Forbidden" : "Error");
+						return;
+					}
+					return handler(req, res);
+				},
+			});
 		},
-	});
-}
-
-/** Protect private plugin routes with native DSH admission before adapting legacy loopback guards.
- * The facade leaves the host server and private-only desktop transports unchanged.
- */
-export function authenticatedWebServer<
-	Server extends WebServer | undefined | null,
->(ctx: WebAuthContext | HostContext, server: Server): Server {
-	if (!server) return server;
-	return new Proxy(server, {
-		get(target, key) {
-			if (key !== "register") {
-				const value = Reflect.get(target, key, target);
-				return typeof value === "function" ? value.bind(target) : value;
-			}
-			return (route: WebRoute): Disposer => {
-				const wrapped: WebRoute = { ...route };
-				if (route.handler) {
-					wrapped.handler = (request, response, ...args) => {
-						const result = admission(ctx, target, request);
-						if (result.status) {
-							response.writeHead(result.status, {
-								"content-type": "text/plain; charset=utf-8",
-								"cache-control": "no-store",
-							});
-							response.end(
-								result.status === 503
-									? "authentication unavailable"
-									: "access denied",
-							);
-							return;
-						}
-						return route.handler!(
-							result.required
-								? nodeRequest(request, legacyHeaders(target, request.headers))
-								: request,
-							response,
-							...args,
-						);
-					};
-				}
-				if (typeof route.resource === "function") {
-					wrapped.resource = (request, ...args) => {
-						const original = Object.fromEntries(request.headers);
-						const result = admission(ctx, target, { headers: original });
-						if (result.status) {
-							return new Response(
-								result.status === 503
-									? "authentication unavailable"
-									: "access denied",
-								{
-									status: result.status,
-									headers: {
-										"content-type": "text/plain; charset=utf-8",
-										"cache-control": "no-store",
-									},
-								},
-							);
-						}
-						return route.resource!(
-							result.required
-								? new Request(request, {
-										headers: legacyHeaders(target, original),
-									})
-								: request,
-							...args,
-						);
-					};
-				}
-				return target.register(wrapped);
-			};
-		},
-	});
+	};
 }
