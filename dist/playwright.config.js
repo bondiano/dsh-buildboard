@@ -10,7 +10,7 @@ function chromiumExecutable() {
         join(process.env.HOME ?? "", "Library/Caches/ms-playwright");
     try {
         const revisions = readdirSync(cache)
-            .filter((entry) => entry.startsWith("chromium"))
+            .filter((entry) => entry.startsWith("chromium-"))
             .sort()
             .reverse();
         for (const revision of revisions) {
@@ -31,6 +31,7 @@ function chromiumExecutable() {
     return undefined;
 }
 const executablePath = chromiumExecutable();
+const launchOptions = executablePath ? { executablePath } : {};
 export default defineConfig({
     testDir: "./test/e2e",
     timeout: 60_000,
@@ -40,8 +41,6 @@ export default defineConfig({
     reporter: [["list"]],
     use: {
         viewport: { width: 1600, height: 1000 },
-        launchOptions: {
-            ...(executablePath === undefined ? {} : { executablePath }),
-        },
+        launchOptions,
     },
 });

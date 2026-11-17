@@ -56,7 +56,9 @@ Creates `session-<id>-…` board, opens it, and `followup`s the agent with the c
 
 ```sh
 npm install
-npm run check   # format, lint, typecheck, unit tests, build:client
+npm run check   # format, lint, typecheck, unit, build:client, e2e
+DSH_ALLOW_BROWSER=1 npm run test:e2e -- -g screenshot   # refresh docs/screenshots/board.png
+./scripts/publish-upstream.sh                           # push snapshot to GitHub (needs gh auth)
 ```
 
 ## Architecture

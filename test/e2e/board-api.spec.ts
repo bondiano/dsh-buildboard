@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { chromium, expect, test } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -38,7 +38,7 @@ async function startHarness(): Promise<{
 	};
 }
 
-test("board state API and screenshot", async ({ page }) => {
+test("board state API returns seeded demo board", async () => {
 	const harness = await startHarness();
 	try {
 		const base = `http://127.0.0.1:${harness.port}`;
@@ -47,8 +47,25 @@ test("board state API and screenshot", async ({ page }) => {
 		).json();
 		expect(state.slug).toBe("main");
 		expect(state.records["shape:sticky"].type).toBe("note");
+		expect(state.records["shape:card"].type).toBe("card");
+	} finally {
+		harness.kill();
+	}
+});
 
-		await page.goto(base);
+test("demo page screenshot", async () => {
+	test.skip(
+		process.env.DSH_ALLOW_BROWSER !== "1",
+		"set DSH_ALLOW_BROWSER=1 to refresh docs/screenshots/board.png",
+	);
+	const harness = await startHarness();
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage({
+			viewport: { width: 1600, height: 1000 },
+		});
+		const base = `http://127.0.0.1:${harness.port}`;
+		await page.goto(base, { waitUntil: "domcontentloaded" });
 		await expect(page.getByText("Launch checklist")).toBeVisible();
 		await mkdir(join(here, "../../docs/screenshots"), { recursive: true });
 		await page.screenshot({
@@ -56,6 +73,7 @@ test("board state API and screenshot", async ({ page }) => {
 			fullPage: true,
 		});
 	} finally {
+		await browser.close().catch(() => {});
 		harness.kill();
 	}
 });

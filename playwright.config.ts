@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { defineConfig } from "@playwright/test";
+import { defineConfig, type LaunchOptions } from "@playwright/test";
 
 /** Prefer an already-cached Chromium over the sandbox cache. */
 function chromiumExecutable(): string | undefined {
@@ -51,6 +51,7 @@ function chromiumExecutable(): string | undefined {
 }
 
 const executablePath = chromiumExecutable();
+const launchOptions: LaunchOptions = executablePath ? { executablePath } : {};
 
 export default defineConfig({
 	testDir: "./test/e2e",
@@ -61,8 +62,6 @@ export default defineConfig({
 	reporter: [["list"]],
 	use: {
 		viewport: { width: 1600, height: 1000 },
-		launchOptions: {
-			...(executablePath === undefined ? {} : { executablePath }),
-		},
+		launchOptions,
 	},
 });
