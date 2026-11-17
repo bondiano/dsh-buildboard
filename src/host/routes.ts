@@ -1,10 +1,18 @@
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createRequire } from "node:module";
+import { dirname, extname, join } from "node:path";
 import type { BoardRegistry } from "../application/board-document.js";
+import { buildRunBrief } from "../application/canvas-brief.js";
 import type { CardLibrary } from "../application/card-library.js";
 import type { RunService } from "../application/run-service.js";
 import type { BoardDiff } from "../domain/board.js";
+import type { RunKind } from "../domain/card.js";
 import { BUILDBOARD_API_ROUTE } from "../domain/route.js";
 import { parseCardRef, type CardScope } from "../domain/ids.js";
+
+const require = createRequire(import.meta.url);
 
 export interface RouteServices {
 	boards: BoardRegistry;
@@ -173,16 +181,142 @@ export async function respondBuildboard(
 			status: 200,
 			body: {
 				card,
-				backlinks: services.cards.backlinksTo(card.id),
+				backlinks: services.cards
+					.backlinksTo(card.id)
+					.concat(services.cards.backlinksTo(`${card.scope}:${card.id}`)),
 			},
 		};
+	}
+
+	if (pathname.startsWith(`${base}/cards/`) && method === "PUT") {
+		await prepare(services, query);
+		const refRaw = decodeURIComponent(pathname.slice(`${base}/cards/`.length));
+		const parsed = parseCardRef(refRaw) ?? {
+			scope: "project" as const,
+			id: refRaw,
+		};
+		const payload = jsonObject(request.body);
+		const existing = services.cards.get(parsed.scope, parsed.id);
+		if (!existing && typeof payload?.["title"] !== "string") {
+			return { status: 400, body: "title required for new card" };
+		}
+		const card = await services.cards.write({
+			id: parsed.id,
+			scope: parsed.scope,
+			title:
+				typeof payload?.["title"] === "string"
+					? payload["title"]
+					: (existing?.title ?? "Untitled"),
+			body:
+				typeof payload?.["body"] === "string"
+					? payload["body"]
+					: existing?.body,
+			kind:
+				(payload?.["kind"] as "note" | "research" | "task" | undefined) ??
+				existing?.kind,
+			tags: Array.isArray(payload?.["tags"])
+				? payload!["tags"].map(String)
+				: existing?.tags,
+			updatedBy: "user",
+		});
+		return { status: 200, body: { card } };
 	}
 
 	if (pathname === `${base}/runs` && method === "GET") {
 		return { status: 200, body: { runs: services.runs.list() } };
 	}
 
+	if (pathname === `${base}/runs` && method === "POST") {
+		await prepare(services, query);
+		const payload = jsonObject(request.body);
+		const kind = payload?.["kind"];
+		if (kind !== "research" && kind !== "implement" && kind !== "canvas") {
+			return { status: 400, body: "kind required" };
+		}
+		const boardSlug =
+			typeof payload?.["boardSlug"] === "string"
+				? payload["boardSlug"]
+				: typeof payload?.["board"] === "string"
+					? payload["board"]
+					: "main";
+		const cardRefs = Array.isArray(payload?.["cardRefs"])
+			? payload!["cardRefs"].map(String)
+			: undefined;
+		const brief =
+			typeof payload?.["brief"] === "string"
+				? payload["brief"]
+				: buildRunBrief({
+						kind: kind as Exclude<RunKind, "canvas">,
+						boardSlug,
+						cardTitles: cardRefs ?? [],
+						cardBodies: [],
+					});
+		const created = await services.runs.create({
+			kind: kind as RunKind,
+			boardSlug,
+			brief,
+			cardRef: cardRefs?.[0],
+			sessionId: query.session,
+		});
+		await services.runs.transition(created.id, "QUEUE");
+		const run = await services.runs.transition(created.id, "START");
+		return { status: 200, body: { run, brief } };
+	}
+
+	if (pathname.startsWith(`${base}/assets/`) && method === "GET") {
+		const asset = pathname.slice(`${base}/assets/`.length);
+		const file = resolveAssetPath(asset);
+		if (!file) return { status: 404, body: "asset not found" };
+		const bytes = await readFile(file);
+		return {
+			status: 200,
+			body: {
+				__raw: true,
+				bytes,
+				contentType: contentTypeFor(file),
+			},
+		};
+	}
+
 	return { status: 404, body: "Not Found" };
+}
+
+function resolveAssetPath(asset: string): string | undefined {
+	if (!asset || asset.includes("..") || asset.includes("\\")) return undefined;
+	try {
+		// tldraw does not export package.json; resolve the entry then climb to root.
+		const entry = require.resolve("tldraw");
+		let dir = dirname(entry);
+		for (let i = 0; i < 6; i += 1) {
+			if (existsSync(join(dir, "tldraw.css"))) break;
+			dir = dirname(dir);
+		}
+		if (asset === "tldraw.css") {
+			const css = join(dir, "tldraw.css");
+			return existsSync(css) ? css : undefined;
+		}
+		const candidate = join(dir, asset);
+		return existsSync(candidate) ? candidate : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function contentTypeFor(path: string): string {
+	switch (extname(path)) {
+		case ".css":
+			return "text/css; charset=utf-8";
+		case ".woff":
+			return "font/woff";
+		case ".woff2":
+			return "font/woff2";
+		case ".svg":
+			return "image/svg+xml";
+		case ".png":
+			return "image/png";
+		default:
+			return "application/octet-stream";
+	}
 }
 
 export async function handleBuildboardHttp(
@@ -198,6 +332,22 @@ export async function handleBuildboardHttp(
 		url: req.url || "",
 		body,
 	});
+	if (
+		typeof reply.body === "object" &&
+		reply.body !== null &&
+		(reply.body as { __raw?: boolean }).__raw === true
+	) {
+		const raw = reply.body as {
+			bytes: Buffer;
+			contentType: string;
+		};
+		res.writeHead(reply.status, {
+			"content-type": raw.contentType,
+			"cache-control": "public, max-age=86400",
+		});
+		res.end(raw.bytes);
+		return;
+	}
 	const payload =
 		typeof reply.body === "string" ? reply.body : JSON.stringify(reply.body);
 	res.writeHead(reply.status, {

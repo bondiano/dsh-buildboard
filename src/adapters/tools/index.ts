@@ -34,6 +34,8 @@ export function buildBuildboardTools(
 		await services.boards.attachWorkspace(workspace);
 		services.cards.setWorkspace(workspace);
 		await services.cards.ensureReady();
+		const sessionId = exec?.agent?.session?.id;
+		if (sessionId) services.runs.bindSession(sessionId);
 		const id = board ?? "main";
 		let doc = services.boards.get(id);
 		if (!doc && id === "main") {

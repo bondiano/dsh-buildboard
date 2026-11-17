@@ -58,9 +58,11 @@ export function BuildboardTab(props: BuildboardTabProps): React.ReactElement {
 					: undefined
 			}
 			canStartSession={typeof props.uiWorkspace?.startSession === "function"}
-			onStartRun={(kind, board) => {
+			onStartRun={(_kind, _board, prompt) => {
 				props.uiWorkspace?.startSession?.(undefined, {
-					prompt: `Buildboard ${kind} on board ${board}. Use board_* and card_* tools, then run_report.`,
+					prompt:
+						prompt ??
+						"Buildboard run. Use board_* and card_* tools, then run_report.",
 					whenDraftExists: "append",
 				});
 			}}

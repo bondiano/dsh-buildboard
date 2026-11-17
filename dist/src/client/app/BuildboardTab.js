@@ -15,9 +15,10 @@ export function BuildboardTab(props) {
         : 2000;
     return (_jsx(BuildboardApp, { sessionId: props.sessionId, compact: true, visible: visible, licenseKey: licenseKey, pollIntervalMs: pollIntervalMs, t: props.t, onFullscreen: props.layout
             ? () => props.layout?.selectPanel(BUILDBOARD_PANEL_ID)
-            : undefined, canStartSession: typeof props.uiWorkspace?.startSession === "function", onStartRun: (kind, board) => {
+            : undefined, canStartSession: typeof props.uiWorkspace?.startSession === "function", onStartRun: (_kind, _board, prompt) => {
             props.uiWorkspace?.startSession?.(undefined, {
-                prompt: `Buildboard ${kind} on board ${board}. Use board_* and card_* tools, then run_report.`,
+                prompt: prompt ??
+                    "Buildboard run. Use board_* and card_* tools, then run_report.",
                 whenDraftExists: "append",
             });
         } }));

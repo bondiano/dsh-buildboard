@@ -10,7 +10,7 @@ process.env.DSH_HOME = dshHome;
 
 const root = join(new URL("../../..", import.meta.url).pathname);
 const { apply } = await import(pathToFileURL(join(root, "dist/index.js")).href);
-const { respondBuildboard } = await import(
+const { handleBuildboardHttp } = await import(
 	pathToFileURL(join(root, "dist/src/host/routes.js")).href
 );
 
@@ -94,24 +94,8 @@ const routeServices = {
 
 const server = createServer(async (req, res) => {
 	if (req.url?.startsWith("/plugin-api/buildboard")) {
-		const chunks = [];
-		for await (const chunk of req) chunks.push(chunk);
-		const body = Buffer.concat(chunks).toString("utf8");
-		const reply = await respondBuildboard(routeServices, {
-			method: req.method,
-			url: req.url,
-			body: body || undefined,
-		});
-		const payload =
-			typeof reply.body === "string" ? reply.body : JSON.stringify(reply.body);
-		res.writeHead(reply.status, {
-			"content-type":
-				typeof reply.body === "string"
-					? "text/plain; charset=utf-8"
-					: "application/json; charset=utf-8",
-			"access-control-allow-origin": "*",
-		});
-		res.end(payload);
+		res.setHeader("access-control-allow-origin", "*");
+		await handleBuildboardHttp(routeServices, req, res);
 		return;
 	}
 	if (req.url === "/" || req.url?.startsWith("/index")) {

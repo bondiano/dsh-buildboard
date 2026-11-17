@@ -100,6 +100,35 @@ export function apply(
 
 	ctx.effect(() => () => boards.dispose());
 
+	// Drive run.machine from live agent lifecycle events.
+	if (typeof ctx.on === "function") {
+		ctx.effect(() => {
+			const offStatus = ctx.on!("agent/status", (event) => {
+				const payload = event as {
+					agent?: { session?: { id?: string } };
+					status?: string;
+				};
+				const sessionId = payload.agent?.session?.id;
+				const status = payload.status;
+				if (!sessionId || (status !== "idle" && status !== "running")) return;
+				void runs.onAgentStatus(sessionId, status).catch((error: unknown) => {
+					ctx.logger?.warn?.(
+						`buildboard: agent/status handler failed: ${String(error)}`,
+					);
+				});
+			});
+			const offCreated = ctx.on!("agent/created", (event) => {
+				const payload = event as { agent?: { session?: { id?: string } } };
+				const sessionId = payload.agent?.session?.id;
+				if (sessionId) runs.bindSession(sessionId);
+			});
+			return () => {
+				offStatus?.();
+				offCreated?.();
+			};
+		}, "buildboard: agent lifecycle");
+	}
+
 	const tools = buildBuildboardTools(ctx, {
 		boards,
 		cards,

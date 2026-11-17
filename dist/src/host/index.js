@@ -64,6 +64,31 @@ export function apply(ctx, rawConfig = {}) {
         resolveWorkspace: (session) => workspaceOf(session === undefined ? undefined : { id: session }),
     };
     ctx.effect(() => () => boards.dispose());
+    // Drive run.machine from live agent lifecycle events.
+    if (typeof ctx.on === "function") {
+        ctx.effect(() => {
+            const offStatus = ctx.on("agent/status", (event) => {
+                const payload = event;
+                const sessionId = payload.agent?.session?.id;
+                const status = payload.status;
+                if (!sessionId || (status !== "idle" && status !== "running"))
+                    return;
+                void runs.onAgentStatus(sessionId, status).catch((error) => {
+                    ctx.logger?.warn?.(`buildboard: agent/status handler failed: ${String(error)}`);
+                });
+            });
+            const offCreated = ctx.on("agent/created", (event) => {
+                const payload = event;
+                const sessionId = payload.agent?.session?.id;
+                if (sessionId)
+                    runs.bindSession(sessionId);
+            });
+            return () => {
+                offStatus?.();
+                offCreated?.();
+            };
+        }, "buildboard: agent lifecycle");
+    }
     const tools = buildBuildboardTools(ctx, {
         boards,
         cards,

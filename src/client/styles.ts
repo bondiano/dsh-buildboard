@@ -92,4 +92,88 @@ export const BUILDBOARD_STYLES = `
 	background: var(--dsw-alias-bg-secondary, #1a1a1a);
 	color: inherit;
 }
+.dsh-bb-search, .dsh-bb-editor-title, .dsh-bb-editor-fallback {
+	width: 100%;
+	box-sizing: border-box;
+	margin: 6px 0;
+	padding: 6px 8px;
+	border-radius: 6px;
+	border: 1px solid var(--dsw-alias-stroke-primary, #444);
+	background: var(--dsw-alias-bg-secondary, #1a1a1a);
+	color: inherit;
+	font: inherit;
+}
+.dsh-bb-sync {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	z-index: 2;
+	font-size: 11px;
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: rgba(0,0,0,.55);
+	pointer-events: none;
+}
+.dsh-bb-sync[data-sync="offline"], .dsh-bb-sync[data-sync="pushing"], .dsh-bb-sync[data-sync="pulling"] {
+	opacity: 0.9;
+}
+.dsh-bb-editor {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 0;
+}
+.dsh-bb-editor-title {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	border-radius: 6px;
+	border: 1px solid var(--dsw-alias-stroke-primary, #444);
+	background: var(--dsw-alias-bg-secondary, #1a1a1a);
+	color: inherit;
+	font: inherit;
+	font-weight: 600;
+}
+.dsh-bb-editor-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+.dsh-bb-editor-toolbar button {
+	appearance: none;
+	border: 1px solid var(--dsw-alias-stroke-primary, #444);
+	background: var(--dsw-alias-bg-secondary, #1a1a1a);
+	color: inherit;
+	border-radius: 6px;
+	padding: 2px 8px;
+	cursor: pointer;
+	font-size: 11px;
+}
+.dsh-bb-editor-body, .dsh-bb-editor-fallback {
+	min-height: 180px;
+	padding: 8px;
+	border-radius: 6px;
+	border: 1px solid var(--dsw-alias-stroke-primary, #444);
+	background: var(--dsw-alias-bg-secondary, #1a1a1a);
+	font-size: 12px;
+	line-height: 1.45;
+}
+.dsh-bb-editor-body .ProseMirror {
+	outline: none;
+	min-height: 160px;
+}
+.dsh-bb-editor-fallback {
+	resize: vertical;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.dsh-bb-board-error {
+	position: absolute;
+	left: 8px;
+	bottom: 8px;
+	margin: 0;
+	padding: 4px 8px;
+	font-size: 11px;
+	background: rgba(0,0,0,.55);
+	border-radius: 6px;
+}
 `;

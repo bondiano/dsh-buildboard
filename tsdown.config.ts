@@ -25,7 +25,15 @@ export default defineConfig({
 	dts: false,
 	deps: {
 		neverBundle: ["react", "react-dom", "react/jsx-runtime"],
-		alwaysBundle: ["tldraw", "xstate", "@tldraw/editor", "@tldraw/store"],
+		alwaysBundle: [
+			"tldraw",
+			"xstate",
+			"@tldraw/editor",
+			"@tldraw/store",
+			"@tiptap/react",
+			"@tiptap/starter-kit",
+			"@tiptap/pm",
+		],
 	},
 	inputOptions: { platform: "browser" },
 	banner: `window.__ModuleLoader__.load({id:${JSON.stringify(name)},factory(require){const exports = {}; const module = { exports };`,

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { BUILDBOARD_API_ROUTE } from "../../domain/route.js";
 import { BoardView } from "../board/BoardView.js";
+import { CardEditor } from "../cards/CardEditor.js";
 
 export interface BuildboardAppProps {
 	sessionId?: string;
@@ -11,7 +12,11 @@ export interface BuildboardAppProps {
 	t?: (key: string) => string;
 	onFullscreen?: () => void;
 	canStartSession?: boolean;
-	onStartRun?: (kind: "research" | "implement", board: string) => void;
+	onStartRun?: (
+		kind: "research" | "implement",
+		board: string,
+		prompt?: string,
+	) => void;
 }
 
 interface BoardSummary {
@@ -54,6 +59,7 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 		null,
 	);
 	const [cardBody, setCardBody] = React.useState("");
+	const [cardTitle, setCardTitle] = React.useState("");
 
 	const sessionQuery = props.sessionId
 		? `session=${encodeURIComponent(props.sessionId)}`
@@ -95,6 +101,7 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 	React.useEffect(() => {
 		if (!selectedCard) {
 			setCardBody("");
+			setCardTitle("");
 			return;
 		}
 		let cancelled = false;
@@ -102,30 +109,51 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 			`${BUILDBOARD_API_ROUTE}/cards/${selectedCard.scope}:${selectedCard.id}?${sessionQuery}`,
 		)
 			.then((r) => r.json())
-			.then((body: { card?: { body?: string } }) => {
-				if (!cancelled) setCardBody(body.card?.body ?? "");
+			.then((body: { card?: { body?: string; title?: string } }) => {
+				if (cancelled) return;
+				setCardBody(body.card?.body ?? "");
+				setCardTitle(body.card?.title ?? selectedCard.title);
 			})
 			.catch(() => {
-				if (!cancelled) setCardBody("");
+				if (!cancelled) {
+					setCardBody("");
+					setCardTitle(selectedCard.title);
+				}
 			});
 		return () => {
 			cancelled = true;
 		};
 	}, [selectedCard, sessionQuery]);
 
+	const startRun = async (kind: "research" | "implement"): Promise<void> => {
+		const brief = `Buildboard ${kind} on board ${board}. Use board_* and card_* tools, then run_report.`;
+		try {
+			const response = await fetch(
+				`${BUILDBOARD_API_ROUTE}/runs?${sessionQuery}`,
+				{
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ kind, boardSlug: board, brief }),
+				},
+			);
+			const body = (await response.json()) as { run?: { id?: string } };
+			const runId = body.run?.id;
+			const prompt = runId
+				? `${brief}\n\nRun id: ${runId}. Open board slug: ${board}.`
+				: brief;
+			props.onStartRun?.(kind, board, prompt);
+		} catch {
+			props.onStartRun?.(kind, board, brief);
+		}
+	};
+
 	return (
 		<div className="dsh-bb-root" data-buildboard-app="">
 			<div className="dsh-bb-toolbar">
-				<button
-					type="button"
-					onClick={() => props.onStartRun?.("research", board)}
-				>
+				<button type="button" onClick={() => void startRun("research")}>
 					{label(props.t, "toolbar.research", "Research")}
 				</button>
-				<button
-					type="button"
-					onClick={() => props.onStartRun?.("implement", board)}
-				>
+				<button type="button" onClick={() => void startRun("implement")}>
 					{label(props.t, "toolbar.implement", "Implement")}
 				</button>
 				{props.onFullscreen ? (
@@ -183,12 +211,22 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 				{props.compact ? null : (
 					<aside className="dsh-bb-detail">
 						{selectedCard ? (
-							<>
-								<strong>{selectedCard.title}</strong>
-								<pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
-									{cardBody}
-								</pre>
-							</>
+							<CardEditor
+								scope={selectedCard.scope}
+								id={selectedCard.id}
+								title={cardTitle || selectedCard.title}
+								body={cardBody}
+								sessionId={props.sessionId}
+								onSaved={(next) => {
+									setCardBody(next.body);
+									setCardTitle(next.title);
+									setSelectedCard({
+										...selectedCard,
+										title: next.title,
+										excerpt: next.body.split("\n").find((l) => l.trim()) ?? "",
+									});
+								}}
+							/>
 						) : (
 							<strong>{label(props.t, "runs.title", "Runs")}</strong>
 						)}

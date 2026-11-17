@@ -44,6 +44,7 @@ export interface HostContext {
 	get?(name: string): unknown;
 	inject?(deps: string[], callback: (ctx: HostContext) => void): void;
 	effect(disposer: () => void | (() => void), label?: string): void;
+	on?(event: string, listener: (payload: unknown) => void): (() => void) | void;
 	fiber?: unknown;
 }
 
