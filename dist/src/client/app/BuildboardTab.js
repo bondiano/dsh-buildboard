@@ -1,6 +1,6 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import * as React from "react";
-import { SETTINGS_NAMESPACE } from "../../settings.js";
+import { SETTINGS_NAMESPACE } from "../../domain/settings-ns.js";
 import { BuildboardApp } from "./BuildboardApp.js";
 export const BUILDBOARD_PANEL_ID = "buildboard";
 export function BuildboardTab(props) {

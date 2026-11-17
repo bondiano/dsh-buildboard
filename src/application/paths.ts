@@ -38,3 +38,11 @@ export function globalCardsDir(dshHome: string): string {
 export function globalCardPath(dshHome: string, id: string): string {
 	return join(globalCardsDir(dshHome), `${id}.md`);
 }
+
+/** Per-session scratch workspace when the session has no project cwd. */
+export function sessionScratchWorkspace(
+	dshHome: string,
+	sessionId: string,
+): string {
+	return join(globalRoot(dshHome), "sessions", sessionId);
+}

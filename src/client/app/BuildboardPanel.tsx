@@ -1,6 +1,6 @@
 import * as React from "react";
 import { BuildboardApp } from "./BuildboardApp.js";
-import { SETTINGS_NAMESPACE } from "../../settings.js";
+import { SETTINGS_NAMESPACE } from "../../domain/settings-ns.js";
 
 export interface BuildboardPanelProps {
 	t?: (key: string) => string;

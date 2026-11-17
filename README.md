@@ -6,7 +6,9 @@ Heptabase-style whiteboard for DeepSeek Harness: **cards** (project + global), *
 
 ## Screenshot
 
-![Buildboard](docs/screenshots/board.png)
+![Buildboard layout mock from the e2e harness (not the live UI)](docs/screenshots/board.png)
+
+> The image above is a static test mock. The live board opens from the **Buildboard** tab in the right sidebar (or `/canvas` in chat).
 
 ## Features
 
@@ -30,10 +32,15 @@ tldraw requires a [license key](https://tldraw.dev/community/license) for produc
 
 ## Usage
 
-### Open
+### Open (what to do)
 
-- Start screen / right sidebar: **Buildboard** tab
-- Fullscreen: sidebar panel list → Buildboard, or the Fullscreen control on the tab
+1. Open any **session** (not the Plugins page).
+2. In the **right sidebar**, open the **Buildboard** tab (next to Start / in the panel list).
+3. Draw stickies, shapes, and arrows on the tldraw canvas.
+4. **Research** / **Implement** starts an agent run with a board brief.
+5. In chat: `/canvas` or `/canvas describe the auth flow` — the agent fills the board.
+
+Fullscreen: sidebar panel list → Buildboard, or the Fullscreen control on the tab.
 
 ### `/canvas`
 

@@ -1,5 +1,5 @@
 import z from "@deepseek-ai/schemastery";
-export const SETTINGS_NAMESPACE = "buildboard";
+export { SETTINGS_NAMESPACE } from "./domain/settings-ns.js";
 export const Config = z.object({
     maxCards: z.natural().min(1).max(100_000).default(10_000).volatile(),
     maxBoards: z.natural().min(1).max(5_000).default(200).volatile(),

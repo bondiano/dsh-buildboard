@@ -1,5 +1,8 @@
 import * as React from "react";
-import { BUILDBOARD_API_ROUTE } from "../../domain/route.js";
+import {
+	BUILDBOARD_API_ROUTE,
+	WORKSPACE_REQUIRED,
+} from "../../domain/route.js";
 import { BoardView } from "../board/BoardView.js";
 import { CardEditor } from "../cards/CardEditor.js";
 
@@ -60,6 +63,11 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 	);
 	const [cardBody, setCardBody] = React.useState("");
 	const [cardTitle, setCardTitle] = React.useState("");
+	const [workspace, setWorkspace] = React.useState<string | null | undefined>(
+		undefined,
+	);
+	const [ensuring, setEnsuring] = React.useState(false);
+	const [ensureError, setEnsureError] = React.useState<string | null>(null);
 
 	const sessionQuery = props.sessionId
 		? `session=${encodeURIComponent(props.sessionId)}`
@@ -70,19 +78,39 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 		let cancelled = false;
 		async function refresh(): Promise<void> {
 			try {
-				const [b, c, r] = await Promise.all([
-					fetch(`${BUILDBOARD_API_ROUTE}/boards?${sessionQuery}`).then((x) =>
-						x.json(),
-					),
-					fetch(`${BUILDBOARD_API_ROUTE}/cards?${sessionQuery}`).then((x) =>
-						x.json(),
-					),
-					fetch(`${BUILDBOARD_API_ROUTE}/runs`).then((x) => x.json()),
+				const [metaRes, bRes, cRes, rRes] = await Promise.all([
+					fetch(`${BUILDBOARD_API_ROUTE}/meta?${sessionQuery}`),
+					fetch(`${BUILDBOARD_API_ROUTE}/boards?${sessionQuery}`),
+					fetch(`${BUILDBOARD_API_ROUTE}/cards?${sessionQuery}`),
+					fetch(`${BUILDBOARD_API_ROUTE}/runs`),
 				]);
 				if (cancelled) return;
-				setBoards((b as { boards: BoardSummary[] }).boards ?? []);
-				setCards((c as { cards: CardSummary[] }).cards ?? []);
-				setRuns((r as { runs: RunSummary[] }).runs ?? []);
+				const meta = (await metaRes.json()) as {
+					workspace?: string | null;
+					error?: string;
+					message?: string;
+				};
+				if (metaRes.status === 409 || meta.error === WORKSPACE_REQUIRED) {
+					setWorkspace(null);
+					setBoards([]);
+					setCards([]);
+					setRuns([]);
+					return;
+				}
+				setWorkspace(
+					typeof meta.workspace === "string" ? meta.workspace : null,
+				);
+				const b = (await bRes.json()) as {
+					boards?: BoardSummary[];
+					workspace?: string | null;
+				};
+				const c = (await cRes.json()) as { cards?: CardSummary[] };
+				const r = (await rRes.json()) as { runs?: RunSummary[] };
+				if (typeof b.workspace === "string") setWorkspace(b.workspace);
+				else if (b.workspace === null) setWorkspace(null);
+				setBoards(b.boards ?? []);
+				setCards(c.cards ?? []);
+				setRuns(r.runs ?? []);
 			} catch {
 				// host may be temporarily unavailable
 			}
@@ -97,6 +125,33 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 			clearInterval(timer);
 		};
 	}, [props.sessionId, props.visible, props.pollIntervalMs, sessionQuery]);
+
+	const createLocalBoard = async (): Promise<void> => {
+		setEnsuring(true);
+		setEnsureError(null);
+		try {
+			const response = await fetch(
+				`${BUILDBOARD_API_ROUTE}/workspace/ensure?${sessionQuery}`,
+				{ method: "POST" },
+			);
+			const body = (await response.json()) as {
+				workspace?: string;
+				boards?: BoardSummary[];
+				message?: string;
+			};
+			if (!response.ok) {
+				setEnsureError(body.message ?? `HTTP ${response.status}`);
+				return;
+			}
+			setWorkspace(body.workspace ?? null);
+			setBoards(body.boards ?? []);
+			setBoard("main");
+		} catch (error) {
+			setEnsureError(String(error));
+		} finally {
+			setEnsuring(false);
+		}
+	};
 
 	React.useEffect(() => {
 		if (!selectedCard) {
@@ -147,8 +202,52 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 		}
 	};
 
+	if (workspace === null) {
+		return (
+			<div className="dsh-bb-root" data-buildboard-app="" data-empty="workspace">
+				<div className="dsh-bb-empty" role="status">
+					<strong>
+						{label(
+							props.t,
+							"empty.noWorkspace",
+							"У сессии нет workspace — доску сохранить некуда.",
+						)}
+					</strong>
+					<p>
+						{label(
+							props.t,
+							"empty.hint",
+							"Открой сессию из проекта слева, или создай локальную доску для этой сессии.",
+						)}
+					</p>
+					<button
+						type="button"
+						disabled={ensuring}
+						onClick={() => void createLocalBoard()}
+					>
+						{ensuring
+							? label(props.t, "empty.creating", "Создаём…")
+							: label(props.t, "empty.createLocal", "Создать локальную доску")}
+					</button>
+					{ensureError ? (
+						<p className="dsh-bb-empty-error" role="alert">
+							{ensureError}
+						</p>
+					) : null}
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="dsh-bb-root" data-buildboard-app="">
+			<p className="dsh-bb-help" role="note">
+				{label(
+					props.t,
+					"help.howto",
+					"Рисуйте на холсте (tldraw). Research/Implement стартуют агента. В чате: /canvas — собрать доску по сессии.",
+				)}
+			</p>
 			<div className="dsh-bb-toolbar">
 				<button type="button" onClick={() => void startRun("research")}>
 					{label(props.t, "toolbar.research", "Research")}
@@ -201,13 +300,19 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 						))}
 					</aside>
 				)}
-				<BoardView
-					sessionId={props.sessionId}
-					board={board}
-					licenseKey={props.licenseKey}
-					pollIntervalMs={props.pollIntervalMs}
-					visible={props.visible}
-				/>
+				{workspace === undefined ? (
+					<div className="dsh-bb-board dsh-bb-fallback" role="status">
+						{label(props.t, "empty.loading", "Загрузка доски…")}
+					</div>
+				) : (
+					<BoardView
+						sessionId={props.sessionId}
+						board={board}
+						licenseKey={props.licenseKey}
+						pollIntervalMs={props.pollIntervalMs}
+						visible={props.visible}
+					/>
+				)}
 				{props.compact ? null : (
 					<aside className="dsh-bb-detail">
 						{selectedCard ? (

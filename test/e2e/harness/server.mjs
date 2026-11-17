@@ -90,6 +90,7 @@ const routeServices = {
 	cards: services.cards,
 	runs: services.runs,
 	resolveWorkspace: () => workspace,
+	ensureSessionWorkspace: async () => workspace,
 };
 
 const server = createServer(async (req, res) => {

@@ -1,5 +1,9 @@
 import * as React from "react";
-import { BUILDBOARD_API_ROUTE } from "../../domain/route.js";
+import {
+	BUILDBOARD_API_ROUTE,
+	WORKSPACE_REQUIRED,
+	WORKSPACE_REQUIRED_HINT,
+} from "../../domain/route.js";
 import {
 	nextSyncStatus,
 	type SyncStatus,
@@ -107,11 +111,30 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 			setSyncStatus("PULL");
 			try {
 				const response = await fetch(`${url}&since=${revisionRef.current}`);
-				if (!response.ok) throw new Error(`HTTP ${response.status}`);
 				const body = (await response.json()) as
 					| BoardSnapshot
-					| { revision: number };
+					| { revision: number }
+					| { error?: string; message?: string };
 				if (cancelled) return;
+				if (
+					response.status === 409 ||
+					(typeof body === "object" &&
+						body !== null &&
+						"error" in body &&
+						body.error === WORKSPACE_REQUIRED)
+				) {
+					setError(
+						(typeof body === "object" &&
+						body !== null &&
+						"message" in body &&
+						typeof body.message === "string"
+							? body.message
+							: null) ?? WORKSPACE_REQUIRED_HINT,
+					);
+					setSyncStatus("FAIL");
+					return;
+				}
+				if (!response.ok) throw new Error(`HTTP ${response.status}`);
 				if (!("records" in body)) {
 					setSyncStatus("OK");
 					return;

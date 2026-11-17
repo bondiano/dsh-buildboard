@@ -10,7 +10,10 @@ import {
 	type BoardSummary,
 } from "../domain/board.js";
 import { createId, slugify } from "../domain/ids.js";
-import { LEGACY_CANVAS_FILE } from "../domain/route.js";
+import {
+	LEGACY_CANVAS_FILE,
+	WORKSPACE_REQUIRED_MESSAGE,
+} from "../domain/route.js";
 import { projectBoardPath, projectBoardsDir } from "./paths.js";
 
 export interface BoardRegistryOptions {
@@ -89,7 +92,7 @@ export class BoardRegistry {
 		sessionId?: string;
 		records?: Record<string, BoardRecord>;
 	}): Promise<BoardDocumentData> {
-		if (!this.#workspace) throw new Error("board create requires a workspace");
+		if (!this.#workspace) throw new Error(WORKSPACE_REQUIRED_MESSAGE);
 		if (this.#boards.size >= this.#maxBoards)
 			throw new Error("maxBoards limit reached");
 		const now = Date.now();

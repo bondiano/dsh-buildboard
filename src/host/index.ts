@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -8,8 +9,12 @@ import {
 	DEFAULT_CANVAS_REQUEST,
 } from "../application/canvas-brief.js";
 import { CardLibrary } from "../application/card-library.js";
+import { sessionScratchWorkspace } from "../application/paths.js";
 import { RunService } from "../application/run-service.js";
-import { BUILDBOARD_API_ROUTE } from "../domain/route.js";
+import {
+	BUILDBOARD_API_ROUTE,
+	WORKSPACE_REQUIRED_HINT,
+} from "../domain/route.js";
 import { slugify } from "../domain/ids.js";
 import type { HostContext } from "../domain/types.js";
 import { authenticatedWebServer } from "../infrastructure/web-route-auth.js";
@@ -78,16 +83,42 @@ export function apply(
 	});
 	const runs = new RunService(cards);
 
+	const ensuredWorkspaces = new Map<string, string>();
+
 	const workspaceOf = (session: unknown): string | undefined => {
-		if (!session) return undefined;
-		try {
-			const wd = ctx.get?.("workingDirectory") as
-				| { get?(s: { id: string }): string | undefined }
-				| undefined;
-			return wd?.get?.(session as { id: string });
-		} catch {
-			return undefined;
+		const sessionId =
+			typeof session === "object" &&
+			session !== null &&
+			"id" in session &&
+			typeof (session as { id: unknown }).id === "string"
+				? (session as { id: string }).id
+				: undefined;
+		if (session) {
+			try {
+				const wd = ctx.get?.("workingDirectory") as
+					| { get?(s: { id: string }): string | undefined }
+					| undefined;
+				const fromSession = wd?.get?.(session as { id: string });
+				if (fromSession) return fromSession;
+			} catch {
+				// workingDirectory may be unavailable in some profiles
+			}
 		}
+		return ensuredWorkspaces.get(sessionId?.trim() || "local");
+	};
+
+	const ensureSessionWorkspace = async (
+		session?: string,
+	): Promise<string> => {
+		const existing = workspaceOf(session ? { id: session } : undefined);
+		if (existing) return existing;
+		const key = session?.trim() || "local";
+		const cached = ensuredWorkspaces.get(key);
+		if (cached) return cached;
+		const path = sessionScratchWorkspace(dshHome, key);
+		await mkdir(path, { recursive: true });
+		ensuredWorkspaces.set(key, path);
+		return path;
 	};
 
 	const services: RouteServices = {
@@ -96,6 +127,7 @@ export function apply(
 		runs,
 		resolveWorkspace: (session?: string) =>
 			workspaceOf(session === undefined ? undefined : { id: session }),
+		ensureSessionWorkspace,
 	};
 
 	ctx.effect(() => () => boards.dispose());
@@ -195,6 +227,12 @@ export function apply(
 						const workspace = workspaceOf(
 							sessionId ? { id: sessionId } : undefined,
 						);
+						if (!workspace) {
+							return {
+								kind: "error",
+								text: WORKSPACE_REQUIRED_HINT,
+							};
+						}
 						await boards.attachWorkspace(workspace);
 						cards.setWorkspace(workspace);
 						await cards.ensureReady();
@@ -260,5 +298,3 @@ export function apply(
 
 	return { boards, cards, runs };
 }
-
-export default apply;

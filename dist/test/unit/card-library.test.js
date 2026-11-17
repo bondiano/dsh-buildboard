@@ -60,6 +60,7 @@ test("board registry create apply flush and http state", async () => {
             cards,
             runs,
             resolveWorkspace: () => workspace,
+            ensureSessionWorkspace: async () => workspace,
         };
         const get = await respondBuildboard(services, {
             method: "GET",

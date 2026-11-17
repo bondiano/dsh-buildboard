@@ -1,11 +1,13 @@
 /**
  * Host-half plugin settings for Buildboard.
  * Volatile fields live in the user settings document, not the profile.
+ * Browser client must not import this module — use domain/settings-ns.js.
  */
 import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 
-export const SETTINGS_NAMESPACE = "buildboard";
+export { SETTINGS_NAMESPACE } from "./domain/settings-ns.js";
+
 
 export interface Config {
 	maxCards: Volatile<number>;

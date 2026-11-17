@@ -1,5 +1,5 @@
 import { BUILDBOARD_LOCALES } from "../adapters/locales.js";
-import { SETTINGS_NAMESPACE } from "../settings.js";
+import { SETTINGS_NAMESPACE } from "../domain/settings-ns.js";
 import { BUILDBOARD_PANEL_ID, BuildboardTab, buildboardTabInject, } from "./app/BuildboardTab.js";
 import { BuildboardPanel } from "./app/BuildboardPanel.js";
 import { SettingsCard } from "./settings/SettingsCard.js";

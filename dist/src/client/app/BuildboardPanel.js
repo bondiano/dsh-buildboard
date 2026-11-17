@@ -1,7 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import * as React from "react";
 import { BuildboardApp } from "./BuildboardApp.js";
-import { SETTINGS_NAMESPACE } from "../../settings.js";
+import { SETTINGS_NAMESPACE } from "../../domain/settings-ns.js";
 export function BuildboardPanel(props) {
     const form = props.configForms?.get(SETTINGS_NAMESPACE);
     const [snapshot, setSnapshot] = React.useState(() => form?.getSnapshot());

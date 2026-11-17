@@ -3,9 +3,46 @@ export const BUILDBOARD_STYLES = `
 	display: flex;
 	flex-direction: column;
 	height: 100%;
-	min-height: 0;
+	min-height: 240px;
 	background: var(--dsw-alias-bg-primary, #111);
 	color: var(--dsw-alias-text-primary, #eee);
+}
+.dsh-bb-empty {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	align-items: flex-start;
+	justify-content: center;
+	flex: 1;
+	padding: 24px;
+	max-width: 420px;
+}
+.dsh-bb-empty strong {
+	font-size: 15px;
+}
+.dsh-bb-empty p {
+	margin: 0;
+	opacity: 0.8;
+	font-size: 13px;
+	line-height: 1.45;
+}
+.dsh-bb-empty button {
+	appearance: none;
+	border: 1px solid var(--dsw-alias-stroke-primary, #444);
+	background: var(--dsw-alias-state-info-primary, #3b82f6);
+	color: #fff;
+	border-radius: 8px;
+	padding: 8px 14px;
+	cursor: pointer;
+	font-size: 13px;
+}
+.dsh-bb-empty button:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+.dsh-bb-empty-error {
+	color: #fca5a5;
+	font-size: 12px;
 }
 .dsh-bb-shell {
 	display: grid;
@@ -32,6 +69,14 @@ export const BUILDBOARD_STYLES = `
 .dsh-bb-board .tl-container {
 	position: absolute;
 	inset: 0;
+}
+.dsh-bb-help {
+	margin: 0;
+	padding: 8px 10px;
+	font-size: 12px;
+	line-height: 1.4;
+	opacity: 0.8;
+	border-bottom: 1px solid var(--dsw-alias-stroke-primary, #333);
 }
 .dsh-bb-toolbar {
 	display: flex;

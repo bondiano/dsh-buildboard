@@ -3,9 +3,12 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, extname, join } from "node:path";
 import { buildRunBrief } from "../application/canvas-brief.js";
-import { BUILDBOARD_API_ROUTE } from "../domain/route.js";
+import { BUILDBOARD_API_ROUTE, WORKSPACE_REQUIRED, WORKSPACE_REQUIRED_HINT, isWorkspaceRequiredError, } from "../domain/route.js";
 import { parseCardRef } from "../domain/ids.js";
 const require = createRequire(import.meta.url);
+function workspaceRequiredBody() {
+    return { error: WORKSPACE_REQUIRED, message: WORKSPACE_REQUIRED_HINT };
+}
 export function parseQuery(rawUrl) {
     try {
         const url = new URL(rawUrl, "http://127.0.0.1");
@@ -40,29 +43,84 @@ export async function respondBuildboard(services, request) {
     })();
     const query = parseQuery(request.url);
     const base = BUILDBOARD_API_ROUTE;
+    if (pathname === `${base}/meta` && method === "GET") {
+        await prepare(services, query);
+        return {
+            status: 200,
+            body: {
+                workspace: services.boards.workspace ?? null,
+                session: query.session ?? null,
+                canEnsure: true,
+            },
+        };
+    }
+    if (pathname === `${base}/workspace/ensure` && method === "POST") {
+        const workspace = await services.ensureSessionWorkspace(query.session);
+        await services.boards.attachWorkspace(workspace);
+        services.cards.setWorkspace(workspace);
+        await services.cards.ensureReady();
+        if (!services.boards.get("main")) {
+            await services.boards.create({ title: "Main", slug: "main" });
+        }
+        return {
+            status: 200,
+            body: {
+                workspace,
+                boards: services.boards.list(),
+            },
+        };
+    }
     if (pathname === `${base}/boards` && method === "GET") {
         await prepare(services, query);
-        return { status: 200, body: { boards: services.boards.list() } };
+        return {
+            status: 200,
+            body: {
+                boards: services.boards.list(),
+                workspace: services.boards.workspace ?? null,
+            },
+        };
     }
     if (pathname === `${base}/boards` && method === "POST") {
         await prepare(services, query);
+        if (!services.boards.workspace) {
+            return { status: 409, body: workspaceRequiredBody() };
+        }
         const payload = jsonObject(request.body);
         const title = typeof payload?.["title"] === "string" ? payload["title"] : "Board";
-        const board = await services.boards.create({
-            title,
-            slug: typeof payload?.["slug"] === "string" ? payload["slug"] : undefined,
-            sessionId: typeof payload?.["sessionId"] === "string"
-                ? payload["sessionId"]
-                : query.session,
-        });
-        return { status: 200, body: services.boards.snapshot(board.id) };
+        try {
+            const board = await services.boards.create({
+                title,
+                slug: typeof payload?.["slug"] === "string" ? payload["slug"] : undefined,
+                sessionId: typeof payload?.["sessionId"] === "string"
+                    ? payload["sessionId"]
+                    : query.session,
+            });
+            return { status: 200, body: services.boards.snapshot(board.id) };
+        }
+        catch (error) {
+            if (isWorkspaceRequiredError(error)) {
+                return { status: 409, body: workspaceRequiredBody() };
+            }
+            throw error;
+        }
     }
     if (pathname.endsWith("/state")) {
         await prepare(services, query);
         const boardId = query.board ?? "main";
         let board = services.boards.get(boardId);
         if (!board && boardId === "main") {
-            board = await services.boards.create({ title: "Main", slug: "main" });
+            if (!services.boards.workspace) {
+                return { status: 409, body: workspaceRequiredBody() };
+            }
+            try {
+                board = await services.boards.create({ title: "Main", slug: "main" });
+            }
+            catch (error) {
+                if (isWorkspaceRequiredError(error)) {
+                    return { status: 409, body: workspaceRequiredBody() };
+                }
+                throw error;
+            }
         }
         if (!board)
             return { status: 404, body: "board not found" };

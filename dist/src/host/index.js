@@ -1,11 +1,13 @@
+import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { buildBuildboardTools } from "../adapters/tools/index.js";
 import { BoardRegistry } from "../application/board-document.js";
 import { buildCanvasBrief, DEFAULT_CANVAS_REQUEST, } from "../application/canvas-brief.js";
 import { CardLibrary } from "../application/card-library.js";
+import { sessionScratchWorkspace } from "../application/paths.js";
 import { RunService } from "../application/run-service.js";
-import { BUILDBOARD_API_ROUTE } from "../domain/route.js";
+import { BUILDBOARD_API_ROUTE, WORKSPACE_REQUIRED_HINT, } from "../domain/route.js";
 import { slugify } from "../domain/ids.js";
 import { authenticatedWebServer } from "../infrastructure/web-route-auth.js";
 import { Config, DEFAULT_SETTINGS, resolveSettings, SETTINGS_NAMESPACE, } from "../settings.js";
@@ -46,22 +48,46 @@ export function apply(ctx, rawConfig = {}) {
         maxCards: config.maxCards,
     });
     const runs = new RunService(cards);
+    const ensuredWorkspaces = new Map();
     const workspaceOf = (session) => {
-        if (!session)
-            return undefined;
-        try {
-            const wd = ctx.get?.("workingDirectory");
-            return wd?.get?.(session);
+        const sessionId = typeof session === "object" &&
+            session !== null &&
+            "id" in session &&
+            typeof session.id === "string"
+            ? session.id
+            : undefined;
+        if (session) {
+            try {
+                const wd = ctx.get?.("workingDirectory");
+                const fromSession = wd?.get?.(session);
+                if (fromSession)
+                    return fromSession;
+            }
+            catch {
+                // workingDirectory may be unavailable in some profiles
+            }
         }
-        catch {
-            return undefined;
-        }
+        return ensuredWorkspaces.get(sessionId?.trim() || "local");
+    };
+    const ensureSessionWorkspace = async (session) => {
+        const existing = workspaceOf(session ? { id: session } : undefined);
+        if (existing)
+            return existing;
+        const key = session?.trim() || "local";
+        const cached = ensuredWorkspaces.get(key);
+        if (cached)
+            return cached;
+        const path = sessionScratchWorkspace(dshHome, key);
+        await mkdir(path, { recursive: true });
+        ensuredWorkspaces.set(key, path);
+        return path;
     };
     const services = {
         boards,
         cards,
         runs,
         resolveWorkspace: (session) => workspaceOf(session === undefined ? undefined : { id: session }),
+        ensureSessionWorkspace,
     };
     ctx.effect(() => () => boards.dispose());
     // Drive run.machine from live agent lifecycle events.
@@ -133,6 +159,12 @@ export function apply(ctx, rawConfig = {}) {
                 const request = invocation.rawInput?.trim() || DEFAULT_CANVAS_REQUEST;
                 const sessionId = invocation.agent.session?.id;
                 const workspace = workspaceOf(sessionId ? { id: sessionId } : undefined);
+                if (!workspace) {
+                    return {
+                        kind: "error",
+                        text: WORKSPACE_REQUIRED_HINT,
+                    };
+                }
                 await boards.attachWorkspace(workspace);
                 cards.setWorkspace(workspace);
                 await cards.ensureReady();
@@ -185,4 +217,3 @@ export function apply(ctx, rawConfig = {}) {
     }));
     return { boards, cards, runs };
 }
-export default apply;

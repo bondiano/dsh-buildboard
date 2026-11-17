@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { importJsonCanvas } from "../adapters/legacy-json-canvas.js";
 import { applyBoardDiff, } from "../domain/board.js";
 import { createId, slugify } from "../domain/ids.js";
-import { LEGACY_CANVAS_FILE } from "../domain/route.js";
+import { LEGACY_CANVAS_FILE, WORKSPACE_REQUIRED_MESSAGE, } from "../domain/route.js";
 import { projectBoardPath, projectBoardsDir } from "./paths.js";
 /** In-memory + on-disk board registry for one workspace. */
 export class BoardRegistry {
@@ -66,7 +66,7 @@ export class BoardRegistry {
     }
     async create(input) {
         if (!this.#workspace)
-            throw new Error("board create requires a workspace");
+            throw new Error(WORKSPACE_REQUIRED_MESSAGE);
         if (this.#boards.size >= this.#maxBoards)
             throw new Error("maxBoards limit reached");
         const now = Date.now();
