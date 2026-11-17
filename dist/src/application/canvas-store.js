@@ -1,15 +1,46 @@
 import { boxesOverlap, strokeHit, unionBounds } from "../domain/geometry.js";
 import { exportToJsonCanvas, importFromJsonCanvas, } from "../adapters/json-canvas.js";
-// ============================================================================
-// Canvas Store (In-Memory State Store)
-// ============================================================================
 export class CanvasStore {
     elements = new Map();
     edges = new Map();
     bible;
-    constructor(initialDocument) {
-        if (initialDocument) {
-            this.loadDocument(initialDocument);
+    rev = 0;
+    listeners = new Set();
+    maxElements;
+    constructor(options = {}) {
+        this.maxElements =
+            "maxElements" in options && typeof options.maxElements === "number"
+                ? options.maxElements
+                : Number.POSITIVE_INFINITY;
+        if ("elements" in options) {
+            this.loadDocument(options);
+            this.rev = 0;
+        }
+    }
+    /** Monotonic document revision; every mutation advances it. */
+    revision() {
+        return this.rev;
+    }
+    /**
+     * Observe document mutations.
+     * @param listener - called after each mutating operation.
+     * @returns disposer removing the listener.
+     */
+    subscribe(listener) {
+        this.listeners.add(listener);
+        return () => {
+            this.listeners.delete(listener);
+        };
+    }
+    emit() {
+        this.rev += 1;
+        for (const listener of this.listeners) {
+            try {
+                listener();
+            }
+            catch {
+                // A faulty subscriber must not break the mutation that notified it.
+            }
         }
     }
     // Element Operations
@@ -28,9 +59,14 @@ export class CanvasStore {
     }
     setElement(element) {
         this.elements.set(element.id, element);
+        this.emit();
         return element;
     }
     createElement(element) {
+        if (!this.elements.has(element.id) &&
+            this.elements.size >= this.maxElements) {
+            throw new Error(`Max canvas elements limit reached (${this.maxElements})`);
+        }
         return this.setElement(element);
     }
     updateElement(id, patch) {
@@ -39,6 +75,7 @@ export class CanvasStore {
             return undefined;
         const updated = { ...existing, ...patch, id };
         this.elements.set(id, updated);
+        this.emit();
         return updated;
     }
     deleteElements(ids) {
@@ -56,6 +93,8 @@ export class CanvasStore {
                 deletedEdges.push(edgeId);
             }
         }
+        if (deletedElements.length > 0 || deletedEdges.length > 0)
+            this.emit();
         return { deletedElements, deletedEdges };
     }
     deleteElement(id) {
@@ -73,13 +112,17 @@ export class CanvasStore {
             `edge_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         const fullEdge = { ...edge, id };
         this.edges.set(id, fullEdge);
+        this.emit();
         return fullEdge;
     }
     connect(edge) {
         return this.addEdge(edge);
     }
     deleteEdge(id) {
-        return this.edges.delete(id);
+        const existed = this.edges.delete(id);
+        if (existed)
+            this.emit();
+        return existed;
     }
     disconnect(id) {
         return this.deleteEdge(id);
@@ -172,6 +215,7 @@ export class CanvasStore {
                 props: patch.props ? [...patch.props] : this.bible.props,
             };
         }
+        this.emit();
         return this.bible;
     }
     // JSON Canvas 1.0 Import / Export
@@ -199,6 +243,8 @@ export class CanvasStore {
         }
         const nodeCount = Object.keys(elements).length;
         const edgeCount = Object.keys(edges).length;
+        if (nodeCount > 0 || edgeCount > 0)
+            this.emit();
         return {
             nodeCount,
             edgeCount,
@@ -238,10 +284,12 @@ export class CanvasStore {
             this.edges.set(edge.id, edge);
         }
         this.bible = doc.bible;
+        this.emit();
     }
     clear() {
         this.elements.clear();
         this.edges.clear();
         this.bible = undefined;
+        this.emit();
     }
 }

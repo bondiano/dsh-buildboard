@@ -12,6 +12,7 @@ import type {
 import { CanvasStore } from "../application/canvas-store.js";
 import { GraphEngine } from "../application/graph-engine.js";
 import { PipelineEngine } from "../application/pipeline-engine.js";
+import type { GenerationProvider } from "../infrastructure/providers/generation-provider.js";
 import { stripUndefined } from "../infrastructure/utils/strip-undefined.js";
 import { deepMerge } from "../infrastructure/utils/deep-merge.js";
 
@@ -24,19 +25,37 @@ export interface CanvasToolsOptions {
 	graphEngine?: GraphEngine;
 	pipelineEngine?: PipelineEngine;
 	config?: unknown;
+	/** Media generation backend the pipeline drives; mock when omitted. */
+	provider?: GenerationProvider;
 }
+
+/** Resolves the board a tool call works on, from the calling session. */
+export type CanvasStoreSource =
+	| CanvasStore
+	| ((exec?: ToolExec) => CanvasStore);
 
 /**
  * Builds the complete 12-tool suite for canvas inspection, manipulation, and execution.
  */
 export function buildCanvasTools(
 	_ctx: HostContext,
-	store: CanvasStore,
+	source: CanvasStoreSource,
 	options?: CanvasToolsOptions,
 ): ToolDefinition[] {
 	const graphEngine = options?.graphEngine ?? new GraphEngine();
 	const pipelineEngine = options?.pipelineEngine ?? new PipelineEngine();
+	const provider = options?.provider;
 	let customBible: Record<string, unknown> = {};
+
+	// One board per session: the agent edits the board of its own workspace.
+	const storeFor = (exec?: ToolExec): CanvasStore =>
+		typeof source === "function" ? source(exec) : source;
+	// Agent writes are stamped so the open board marks them until the user
+	// touches the same element.
+	const agentStamp = (): { updatedBy: "agent"; updatedAt: number } => ({
+		updatedBy: "agent",
+		updatedAt: Date.now(),
+	});
 
 	const tools: ToolDefinition[] = [
 		// 1. canvas_get_state
@@ -89,6 +108,7 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const params = (args || {}) as {
 					boundingBox?: {
@@ -190,6 +210,7 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const params = (args || {}) as {
 					boundingBox?: {
@@ -285,6 +306,7 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const { nodeId } = (args || {}) as { nodeId?: string };
 				if (!nodeId) throw new Error("Node not found: undefined");
@@ -356,6 +378,7 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const p = (args || {}) as Partial<CanvasElement>;
 				if (
@@ -419,7 +442,10 @@ export function buildCanvasTools(
 					height,
 				} as CanvasElement;
 
-				const sanitizedElement = stripUndefined(element);
+				const sanitizedElement = stripUndefined({
+					...element,
+					...agentStamp(),
+				});
 				const created = store.createElement(sanitizedElement);
 				return stripUndefined({
 					ok: true,
@@ -466,6 +492,7 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const { id, patch } = (args || {}) as {
 					id?: string;
@@ -507,7 +534,10 @@ export function buildCanvasTools(
 					}
 				}
 
-				const sanitizedPatch = stripUndefined(updatedPatch);
+				const sanitizedPatch = stripUndefined({
+					...updatedPatch,
+					...agentStamp(),
+				});
 				const updated = store.updateElement(id, sanitizedPatch);
 				return stripUndefined({
 					ok: true,
@@ -551,6 +581,7 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const p = (args || {}) as { ids?: string[]; id?: string };
 				const ids = Array.isArray(p.ids) ? p.ids : p.id ? [p.id] : [];
@@ -609,6 +640,7 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const p = (args || {}) as CanvasEdge;
 				if (!p.fromNode || !p.toNode) {
@@ -705,6 +737,7 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const p = (args || {}) as {
 					layouts?: Array<{
@@ -760,13 +793,17 @@ export function buildCanvasTools(
 						if (typeof item.pinned === "boolean") {
 							patch.pinned = item.pinned;
 						}
-						store.updateElement(item.id, patch);
+						store.updateElement(item.id, { ...patch, ...agentStamp() });
 						updatedCount++;
 					}
 				} else if (p.auto) {
 					const coords = graphEngine.computeAutoLayoutCoordinates();
 					for (const [id, coord] of coords.entries()) {
-						store.updateElement(id, { x: coord.x, y: coord.y });
+						store.updateElement(id, {
+							x: coord.x,
+							y: coord.y,
+							...agentStamp(),
+						});
 						updatedCount++;
 					}
 				} else {
@@ -825,12 +862,14 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const p = (args || {}) as { nodeId?: string; mode?: "step" | "all" };
 
 				if (p.nodeId && p.mode !== "all") {
 					const res = await pipelineEngine.executeNode(p.nodeId, store, {
 						signal: exec?.signal,
+						provider,
 					});
 					return stripUndefined({
 						ok: res.ok,
@@ -844,6 +883,7 @@ export function buildCanvasTools(
 					const res = await pipelineEngine.runWorkflow(store, {
 						rootNodeIds: p.nodeId ? [p.nodeId] : undefined,
 						signal: exec?.signal,
+						provider,
 					});
 					return stripUndefined({
 						ok: res.ok,
@@ -892,6 +932,7 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const { action, document: doc } = (args || {}) as {
 					action?: "export" | "import";
@@ -908,6 +949,9 @@ export function buildCanvasTools(
 				} else if (action === "import") {
 					if (!doc) throw new Error("Document payload required for import");
 					const res = store.importJsonCanvas(doc);
+					for (const imported of store.getAllElements()) {
+						store.updateElement(imported.id, agentStamp());
+					}
 					return stripUndefined({
 						ok: true,
 						text: `Imported ${res.importedNodes} nodes and ${res.importedEdges} edges`,
@@ -941,6 +985,7 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(_args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const storeBible = (store.getBible() || {}) as Record<string, unknown>;
 				const effectiveBible = deepMerge(
@@ -982,6 +1027,7 @@ export function buildCanvasTools(
 				},
 			},
 			async execute(args: unknown, exec: ToolExec): Promise<ToolValue> {
+				const store = storeFor(exec);
 				if (exec?.signal?.aborted) throw new Error("Aborted");
 				const { patch } = (args || {}) as { patch?: Record<string, unknown> };
 				if (!patch || typeof patch !== "object") {

@@ -382,6 +382,22 @@ export function exportToJsonCanvas(
 		}
 	}
 
+	// Actor stamps ride in styleAttributes: JSON Canvas 1.0 has no top-level slot
+	// for them, and the last-writer-wins merge needs the writer after a reload.
+	for (const node of nodes) {
+		const el = elements[node.id];
+		if (el === undefined) continue;
+		if (el.updatedBy === undefined && el.updatedAt === undefined) continue;
+		const sa =
+			(node as { styleAttributes?: Record<string, unknown> }).styleAttributes ??
+			{};
+		(node as { styleAttributes?: Record<string, unknown> }).styleAttributes = {
+			...sa,
+			...(el.updatedBy !== undefined ? { gbUpdatedBy: el.updatedBy } : {}),
+			...(el.updatedAt !== undefined ? { gbUpdatedAt: el.updatedAt } : {}),
+		};
+	}
+
 	const exportedEdges: JSONCanvasEdge[] = Object.values(edges).map((e) => ({
 		id: e.id,
 		fromNode: e.fromNode,
@@ -680,6 +696,16 @@ export function importFromJsonCanvas(doc: JSONCanvasDocument): {
 			zIndex: typeof sa.zIndex === "number" ? sa.zIndex : undefined,
 			pinned: typeof sa.pinned === "boolean" ? sa.pinned : undefined,
 		};
+	}
+
+	for (const node of doc?.nodes ?? []) {
+		const el = elements[node.id];
+		if (el === undefined) continue;
+		const sa = (node.styleAttributes ?? {}) as Record<string, unknown>;
+		if (sa.gbUpdatedBy === "user" || sa.gbUpdatedBy === "agent") {
+			el.updatedBy = sa.gbUpdatedBy;
+		}
+		if (typeof sa.gbUpdatedAt === "number") el.updatedAt = sa.gbUpdatedAt;
 	}
 
 	for (const edge of doc?.edges ?? []) {

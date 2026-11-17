@@ -12,6 +12,9 @@
  * - CanvasMinimap: bird's-eye minimap with camera rect and pan-to
  * - CanvasToolView: agent tool card views registered in slot tool.call.toolview
  * - CultCanvasBoard: master interactive whiteboard combining all systems
+ * - CultCanvasTab: right-sidebar tab body, sync endpoint, Start project
+ * - CanvasSettingsCard: the plugin's settings card in Settings → Plugins
+ * - CanvasIcon: guide card and chip glyph
  *
  * @module @local/dsh-cult-canvas/presentation/components
  */
@@ -27,3 +30,6 @@ export * from "./CanvasViewport.js";
 export * from "./CanvasMinimap.js";
 export * from "./CanvasToolView.js";
 export * from "./CultCanvasBoard.js";
+export * from "./CultCanvasTab.js";
+export * from "./CanvasSettingsCard.js";
+export * from "./CanvasIcon.js";

@@ -92,6 +92,17 @@ export interface HostServices {
 	};
 }
 
+/** Host settings service: namespace policy for the plugin's own entry. */
+export interface HostSettings {
+	configure(policy: { auto: boolean }, fiber?: unknown): Disposer;
+}
+
+/** Services reachable through `ctx.inject` that this plugin consumes. */
+export interface InjectedServices {
+	webServer?: WebServer;
+	settings?: HostSettings;
+}
+
 export interface HostContext {
 	get<K extends keyof HostServices>(name: K): HostServices[K] | undefined;
 	fiber?: { entry?: object };
@@ -108,7 +119,7 @@ export interface HostContext {
 	};
 	inject(
 		services: string[],
-		callback: (ctx: HostContext & { webServer: WebServer }) => void,
+		callback: (ctx: HostContext & InjectedServices) => void,
 	): void;
 }
 
@@ -119,7 +130,11 @@ export interface HostContext {
 export interface ClientSlotRegistration {
 	name: string;
 	key?: string;
+	id?: string;
+	order?: number;
 	locale?: string;
+	inject?: (sessionId: string) => Record<string, unknown>;
+	children?: Record<string, unknown>;
 }
 
 export interface ClientSlots {
@@ -135,22 +150,103 @@ export interface ClientLocale {
 		namespace: string,
 		dicts: Record<string, Record<string, string>>,
 	): Disposer;
+	bind?(namespace: string): (key: string) => string;
 }
 
 export interface ClientRemote {
 	call<T = unknown>(method: string, ...params: unknown[]): Promise<T>;
 }
 
+/** One guide-page capsule a registered tab type offers on the Start screen. */
+export interface ClientSidebarGuideEntry {
+	id: string;
+	order: number;
+	title: () => string;
+	description?: () => string;
+	icon?: unknown;
+}
+
+/** Static face of one right-sidebar tab type. */
+export interface ClientSidebarTabDefinition {
+	id: string;
+	kind: string;
+	title: (address: string) => string;
+	patterns?: readonly string[];
+	priority?: "extension" | "builtin" | "fallback";
+	guide?: readonly ClientSidebarGuideEntry[];
+}
+
+/** Tab-type registry served by the right sidebar. */
+export interface ClientSidebarRightTabs {
+	register(definition: ClientSidebarTabDefinition): Disposer;
+}
+
+/** Sidebar navigation face used to reveal a registered tab. */
+export interface ClientSidebarRight {
+	openTab(kind: string, options?: unknown): void;
+	openResource(address: string, options?: unknown): void;
+}
+
+/** Sync state of one settings namespace as the browser sees it. */
+export interface ClientConfigSnapshot {
+	status: "loading" | "ready" | "unavailable";
+	value: Record<string, unknown> | undefined;
+	writable: boolean;
+	revision: number | undefined;
+}
+
+/** One settings namespace's read/write face. */
+export interface ClientConfigForm {
+	getSnapshot(): ClientConfigSnapshot;
+	subscribe(listener: () => void): () => void;
+	set(field: string, value: unknown): Promise<boolean>;
+}
+
+/** Settings transport served by `@deepseek-ai/dsh-client-ui-settings`. */
+export interface ClientConfigForms {
+	get(entryId: string): ClientConfigForm;
+	whileServed(
+		namespaces: readonly string[],
+		register: (served: ReadonlySet<string>) => () => void,
+	): () => void;
+}
+
+/** Initial content for a Session started from the UI. */
+export interface ClientStartSessionOptions {
+	prompt?: string;
+	agentPreset?: string;
+	whenDraftExists?: "replace" | "append" | "keep";
+}
+
 export interface ClientUIWorkspace {
 	getActiveSession?(): { id: string } | undefined;
+	startSession(workspaceId?: string, options?: ClientStartSessionOptions): void;
+	openWorkspace(
+		workspaceId: string,
+		beforeOpen?: (sessionId: string) => void,
+	): Promise<void>;
+}
+
+/** Workspace registry face used to open the board's own directory. */
+export interface ClientWorkspaces {
+	create(input: { path: string }): Promise<{ id: string } | undefined>;
 }
 
 export interface ClientContext {
 	slots: ClientSlots;
 	locale: ClientLocale;
-	remote: ClientRemote;
-	uiWorkspace: ClientUIWorkspace;
+	remote?: ClientRemote;
+	uiWorkspace?: ClientUIWorkspace;
+	workspaces?: ClientWorkspaces;
+	sidebarRightTabs?: ClientSidebarRightTabs;
+	sidebarRight?: ClientSidebarRight;
+	configForms?: ClientConfigForms;
 	effect(callback: () => Disposer | void, label?: string): unknown;
+	inject?(
+		services: readonly string[],
+		callback: (ctx: ClientContext) => void,
+	): void;
+	get?(name: "workspaces"): ClientWorkspaces | undefined;
 }
 
 // ============================================================================
@@ -194,6 +290,14 @@ export interface Point {
 // Whiteboard Element Models (Cult Canvas & Freehand)
 // ============================================================================
 
+/**
+ * Who wrote an element last.
+ *
+ * The board renders agent edits with a badge until the user touches the same
+ * element, so this is user-visible state and travels with the document.
+ */
+export type CanvasActor = "user" | "agent";
+
 export interface BaseElement {
 	id: string;
 	x: number;
@@ -202,6 +306,10 @@ export interface BaseElement {
 	height: number;
 	zIndex?: number;
 	pinned?: boolean;
+	/** Last writer of this element; drives the live "agent" badge. */
+	updatedBy?: CanvasActor;
+	/** Milliseconds of the last write; the last-writer-wins key for merge. */
+	updatedAt?: number;
 	type?: string;
 	text?: string;
 	label?: string;

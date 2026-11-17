@@ -32,7 +32,7 @@ export function worldToScreen(worldX, worldY, viewport) {
         y: worldY * viewport.zoom + viewport.y,
     };
 }
-export function CanvasViewport({ viewport, onViewportChange, svgContent, domContent, previewContent, marqueeBounds, cursor = "default", onPointerDown, onPointerMove, onPointerUp, className, }) {
+export function CanvasViewport({ viewport, onViewportChange, svgContent, domContent, previewContent, marqueeBounds, gridSize: gridStep = 20, cursor = "default", onPointerDown, onPointerMove, onPointerUp, className, }) {
     const containerRef = useRef(null);
     const handleWheel = (e) => {
         const ev = e;
@@ -69,7 +69,7 @@ export function CanvasViewport({ viewport, onViewportChange, svgContent, domCont
         }
     };
     // Background dot grid calculation
-    const gridSize = 20 * viewport.zoom;
+    const gridSize = gridStep * viewport.zoom;
     const gridOffsetX = ((viewport.x % gridSize) + gridSize) % gridSize;
     const gridOffsetY = ((viewport.y % gridSize) + gridSize) % gridSize;
     const rootCls = ["dsh-cult-canvas-root", className ?? ""]

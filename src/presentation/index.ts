@@ -2,11 +2,11 @@
  * Presentation Module / Plugin Entrypoint for DSH Cult Canvas
  *
  * Implements:
- * - Cordis lifecycle injection ("tools", "systemPrompt", dynamic "webServer")
- * - Configuration resolution with safe defaults from cordis.patch.yml
- * - Unified CanvasStore, GraphEngine, and PipelineEngine instantiation
+ * - Cordis lifecycle injection ("tools", "systemPrompt", "settings", dynamic "webServer")
+ * - Configuration resolution with safe defaults and the Schemastery `Config` schema
+ * - One board per workspace (BoardRegistry) shared by the agent tools and the tab
  * - Registration of 12 AI agent tools with disposer tracking
- * - Authenticated WebServer route serving /plugin-api/cult-canvas/state
+ * - Authenticated WebServer route serving the live board protocol
  * - System prompt section injection ("tool:canvas")
  * - Clean, leak-free disposer lifecycle
  *
@@ -15,21 +15,42 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type {
+	CanvasEdge,
+	CanvasElement,
 	HostContext,
-	WebServer,
-	JSONCanvasDocument,
+	SeriesBible,
 } from "../domain/types.js";
-import { CanvasStore } from "../application/canvas-store.js";
+import { BoardRegistry } from "../application/board-registry.js";
+import { CANVAS_API_ROUTE } from "../domain/route.js";
+import {
+	applyUserSnapshot,
+	type UserSnapshotPayload,
+} from "../application/board-sync.js";
 import { GraphEngine } from "../application/graph-engine.js";
 import { PipelineEngine } from "../application/pipeline-engine.js";
 import { authenticatedWebServer } from "../infrastructure/web-route-auth.js";
+import type { GenerationProvider } from "../infrastructure/providers/generation-provider.js";
+import { MockGenerationProvider } from "../infrastructure/providers/mock-provider.js";
+import { OpenAIProvider } from "../infrastructure/providers/openai-provider.js";
+import { WanxProvider } from "../infrastructure/providers/wanx-provider.js";
 import { buildCanvasTools } from "../adapters/tools.js";
+import {
+	GENERATION_PROVIDERS,
+	type GenerationProviderName,
+} from "../settings.js";
+
+export {
+	Config,
+	GENERATION_PROVIDERS,
+	SETTINGS_NAMESPACE,
+	type CanvasSettings,
+	type GenerationProviderName,
+} from "../settings.js";
 
 /** Services required for basic plugin initialization. */
 export const inject = ["tools", "systemPrompt"] as const;
 
-/** Canonical web route prefix for canvas API endpoints. */
-export const CANVAS_API_ROUTE = "/plugin-api/cult-canvas";
+export { BOARD_FILE_NAME, CANVAS_API_ROUTE } from "../domain/route.js";
 
 /** System prompt section identity. */
 export const CANVAS_SYSTEM_PROMPT_NAME = "tool:canvas";
@@ -38,12 +59,13 @@ export const CANVAS_SYSTEM_PROMPT_NAME = "tool:canvas";
 export const CANVAS_SYSTEM_PROMPT_ORDER = 2800;
 
 /** Guidance text injected into the system prompt for AI agents. */
-export const CANVAS_GUIDANCE = `DSH Cult Canvas active: Freehand whiteboard and media pipeline tools are available.
-Use the canvas tools to interact with the visual whiteboard and media generation pipeline:
-- Inspect state: use canvas_get_state for overview/serialization and canvas_query_elements for spatial or type filtering.
-- Whiteboard & nodes: use canvas_create_element, canvas_update_element, and canvas_delete_element for notes, shapes, script, storyboard, image, video, audio, and finalcut elements.
-- Graph & execution: use canvas_connect to link ports, canvas_layout_elements to organize DAG flows, canvas_run_pipeline to execute workflows, and canvas_node_status to monitor progress.
-- Worldview & formats: use canvas_get_bible and canvas_update_bible for characters, scenes, and style anchors; use canvas_import_export for JSON Canvas 1.0 interchange.`;
+export const CANVAS_GUIDANCE = `DSH Cult Canvas active: the user's whiteboard lives in the Cult Canvas tab of the right sidebar.
+- Read before writing: canvas_get_state returns the board; canvas_query_elements filters it by kind or area.
+- Edit surgically: canvas_create_element, canvas_update_element, canvas_delete_element, canvas_connect and canvas_layout_elements change single elements. Never rewrite the board wholesale.
+- Edits appear live in the user's open tab and are marked "agent" until the user touches the same element, so keep changes small and name the element you changed.
+- The board is one JSON Canvas 1.0 file per project at <workspace>/cult-canvas.canvas and is saved automatically.
+- A session started from the board's "Start project" button arrives with a brief built from the board; treat it as the task description.
+- Media pipeline: canvas_run_pipeline executes nodes, canvas_node_status reports progress, canvas_get_bible/canvas_update_bible hold characters, scenes and style anchors.`;
 
 /** Plugin configuration parameters. */
 export interface CanvasPluginConfig {
@@ -52,6 +74,9 @@ export interface CanvasPluginConfig {
 	maxElements: number;
 	snapToGrid: boolean;
 	gridSize: number;
+	generationProvider: GenerationProviderName;
+	generationApiKey: string;
+	generationBaseUrl: string;
 }
 
 /** Safe defaults matching cordis.patch.yml. */
@@ -61,7 +86,13 @@ export const DEFAULT_CONFIG: Readonly<CanvasPluginConfig> = Object.freeze({
 	maxElements: 5000,
 	snapToGrid: true,
 	gridSize: 20,
+	generationProvider: "mock" as GenerationProviderName,
+	generationApiKey: "",
+	generationBaseUrl: "",
 });
+
+/** Longest accepted API key or base URL. */
+const MAX_CREDENTIAL_LENGTH = 512;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -85,9 +116,15 @@ function clampInt(
 
 /**
  * Resolve raw configuration input into typed plugin configuration with safe clamping.
+ *
+ * shortcut: these clamps duplicate the Schemastery `Config` ranges, revalidate
+ * once settings writes are the only source of configuration.
  */
 export function resolveCanvasConfig(raw: unknown): CanvasPluginConfig {
 	const input = isPlainObject(raw) ? raw : {};
+	const provider = input["generationProvider"];
+	const apiKey = input["generationApiKey"];
+	const baseUrl = input["generationBaseUrl"];
 	return {
 		defaultCanvasWidth: clampInt(
 			input["defaultCanvasWidth"],
@@ -112,147 +149,329 @@ export function resolveCanvasConfig(raw: unknown): CanvasPluginConfig {
 				? input["snapToGrid"]
 				: DEFAULT_CONFIG.snapToGrid,
 		gridSize: clampInt(input["gridSize"], 1, 500, DEFAULT_CONFIG.gridSize),
+		generationProvider: GENERATION_PROVIDERS.includes(
+			provider as GenerationProviderName,
+		)
+			? (provider as GenerationProviderName)
+			: DEFAULT_CONFIG.generationProvider,
+		generationApiKey:
+			typeof apiKey === "string"
+				? apiKey.slice(0, MAX_CREDENTIAL_LENGTH)
+				: DEFAULT_CONFIG.generationApiKey,
+		generationBaseUrl:
+			typeof baseUrl === "string"
+				? baseUrl.slice(0, MAX_CREDENTIAL_LENGTH)
+				: DEFAULT_CONFIG.generationBaseUrl,
 	};
 }
 
-/**
- * Build the JSON-serializable canvas state response with execution metadata.
- */
-export function buildCanvasStatePayload(
-	store: CanvasStore,
-): JSONCanvasDocument {
-	const state = store.exportJsonCanvas();
-	const nodes = (state.nodes || []).map((n) => {
-		const el = store.getElementById(n.id);
-		return {
-			...n,
-			...(el?.status ? { status: el.status } : {}),
-			...(el?.data ? { data: el.data } : {}),
-		};
-	});
+/** Build the media generation backend the configuration names. */
+function createGenerationProvider(
+	config: CanvasPluginConfig,
+): GenerationProvider {
+	const credentials = {
+		apiKey: config.generationApiKey,
+		baseUrl: config.generationBaseUrl || undefined,
+	};
+	if (config.generationProvider === "openai") {
+		return new OpenAIProvider(credentials);
+	}
+	if (config.generationProvider === "wanx") {
+		return new WanxProvider(credentials);
+	}
+	return new MockGenerationProvider();
+}
+
+/** The board's own model elements, connectors and copy, for one poll or load. */
+export interface CanvasStateResponse {
+	revision: number;
+	elements: CanvasElement[];
+	edges: CanvasEdge[];
+	bible?: SeriesBible;
+}
+
+/** What a Client asks for: one session, one board. */
+export interface CanvasRouteQuery {
+	session?: string;
+	workspace?: string;
+	since?: number;
+}
+
+/** Parse the route's query parameters; malformed input yields an empty query. */
+export function parseCanvasQuery(rawUrl: string): CanvasRouteQuery {
+	let url: URL;
+	try {
+		url = new URL(rawUrl, "http://127.0.0.1");
+	} catch {
+		return {};
+	}
+	// A missing parameter is not a zero: `Number(null)` would make every poll
+	// look like "I am current" and starve the board of its own elements.
+	const rawSince = url.searchParams.get("since");
+	const since = rawSince === null ? Number.NaN : Number(rawSince);
 	return {
-		...state,
-		nodes,
+		session: url.searchParams.get("session") ?? undefined,
+		workspace: url.searchParams.get("workspace") ?? undefined,
+		since: Number.isInteger(since) && since >= 0 ? since : undefined,
 	};
 }
 
 /**
- * Handle incoming Node HTTP requests for the canvas web API.
+ * Answer `GET /state` for one board.
+ * @param registry - per-workspace board registry.
+ * @param query - resolved route query.
+ * @returns the board, or the revision alone when the client is current.
  */
-function handleCanvasHttp(
-	store: CanvasStore,
-	req: IncomingMessage,
-	res: ServerResponse,
-): void {
-	const rawUrl = req.url || "";
-	let pathname = rawUrl;
+export async function readCanvasState(
+	registry: BoardRegistry,
+	query: CanvasRouteQuery,
+): Promise<CanvasStateResponse | { revision: number }> {
+	const record = registry.record(query.session, query.workspace);
+	await record.ready;
+	const revision = record.store.revision();
+	if (query.since !== undefined && query.since === revision)
+		return { revision };
+	return {
+		revision,
+		elements: record.store.getAllElements(),
+		edges: record.store.getAllEdges(),
+		bible: record.store.getBible(),
+	};
+}
+
+/** Path of the request without its trailing slashes. */
+function requestPath(rawUrl: string): string {
 	try {
-		pathname = new URL(rawUrl, "http://127.0.0.1").pathname;
+		return new URL(rawUrl, "http://127.0.0.1").pathname.replace(/\/+$/, "");
 	} catch {
-		// Use raw path if parsing fails
+		return rawUrl.replace(/\/+$/, "");
 	}
-	const normalized = pathname.replace(/\/+$/, "");
+}
 
-	if (normalized.endsWith("/state")) {
-		const payload = buildCanvasStatePayload(store);
-		const body = JSON.stringify(payload);
-		res.writeHead(200, {
-			"content-type": "application/json; charset=utf-8",
-			"x-received-host": (req.headers["host"] as string) || "",
-			"x-received-origin": (req.headers["origin"] as string) || "",
-		});
-		res.end(body);
-		return;
-	}
+/** One transport-neutral canvas request: what the route answers. */
+export interface CanvasRequest {
+	/** HTTP method; absent means GET. */
+	method?: string;
+	/** Request target, query included. */
+	url: string;
+	/** Request body, read only for a write. */
+	body?: string;
+}
 
-	res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-	res.end("Not Found");
+/** The route's answer: a status and a JSON body. */
+export interface CanvasReply {
+	status: number;
+	body: unknown;
 }
 
 /**
- * Handle incoming Fetch standard Requests for the canvas web API.
+ * Answer one canvas protocol request, whatever carries it.
+ *
+ * The DSH WebServer hands prefix routes either a Node handler or a Fetch
+ * resource; only the Node handler sees a request body, and the server answers
+ * 405 for a non-GET resource. The protocol therefore lives here, once, and
+ * {@link handleCanvasHttp} is its Node adapter.
+ *
+ * @param registry - per-workspace board registry.
+ * @param request - method, target and body of the request.
+ * @returns the status and JSON body to send.
  */
-async function handleCanvasResource(
-	store: CanvasStore,
-	req: Request,
-): Promise<Response> {
-	let pathname = "";
-	try {
-		const url = new URL(req.url);
-		pathname = url.pathname.replace(/\/+$/, "");
-	} catch {
-		return new Response("Bad Request", { status: 400 });
-	}
+export async function respondCanvasRequest(
+	registry: BoardRegistry,
+	request: CanvasRequest,
+): Promise<CanvasReply> {
+	const rawUrl = request.url;
+	const pathname = requestPath(rawUrl);
+	const query = parseCanvasQuery(rawUrl);
+	const method = (request.method ?? "GET").toUpperCase();
 
 	if (pathname.endsWith("/state")) {
-		const payload = buildCanvasStatePayload(store);
-		return new Response(JSON.stringify(payload), {
-			status: 200,
-			headers: {
-				"content-type": "application/json; charset=utf-8",
-				"x-received-host": req.headers.get("host") || "",
-				"x-received-origin": req.headers.get("origin") || "",
-			},
-		});
+		if (method === "GET" || method === "HEAD") {
+			return { status: 200, body: await readCanvasState(registry, query) };
+		}
+		if (method !== "POST") return { status: 405, body: "Method Not Allowed" };
+		const payload = parseUserPayload(request.body ?? "");
+		if (payload === undefined)
+			return { status: 400, body: "Invalid canvas snapshot" };
+		const record = registry.record(query.session, query.workspace);
+		await record.ready;
+		applyUserSnapshot(record.store, payload);
+		return { status: 200, body: { revision: record.store.revision() } };
 	}
 
-	return new Response("Not Found", { status: 404 });
+	if (pathname.endsWith("/flush")) {
+		const record = registry.record(query.session, query.workspace);
+		await record.ready;
+		await record.flush();
+		return { status: 200, body: { ok: true, workspace: record.workspace } };
+	}
+
+	return { status: 404, body: "Not Found" };
+}
+
+/**
+ * Node adapter of the canvas protocol.
+ *
+ * Registered WITHOUT a Fetch `resource`: the server answers 405 to a non-GET
+ * resource before any plugin code runs, and the Client must post its edits.
+ */
+export async function handleCanvasHttp(
+	registry: BoardRegistry,
+	req: IncomingMessage,
+	res: ServerResponse,
+): Promise<void> {
+	const method = (req.method ?? "GET").toUpperCase();
+	const body =
+		method === "GET" || method === "HEAD" ? undefined : await readBody(req);
+	const reply = await respondCanvasRequest(registry, {
+		method,
+		url: req.url || "",
+		body,
+	});
+	const payload =
+		typeof reply.body === "string" ? reply.body : JSON.stringify(reply.body);
+	res.writeHead(reply.status, {
+		"content-type":
+			typeof reply.body === "string"
+				? "text/plain; charset=utf-8"
+				: "application/json; charset=utf-8",
+	});
+	res.end(payload);
+}
+
+/** Collect a request body, capped so a malformed caller cannot grow unbounded. */
+async function readBody(req: IncomingMessage): Promise<string> {
+	const chunks: Buffer[] = [];
+	let size = 0;
+	for await (const chunk of req) {
+		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+		size += buffer.length;
+		if (size > 8 * 1024 * 1024) throw new Error("canvas snapshot too large");
+		chunks.push(buffer);
+	}
+	return Buffer.concat(chunks).toString("utf8");
+}
+
+/** Parse a posted user snapshot, or undefined when it is not one. */
+function parseUserPayload(body: string): UserSnapshotPayload | undefined {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body);
+	} catch {
+		return undefined;
+	}
+	if (!isPlainObject(parsed)) return undefined;
+	if (!Array.isArray(parsed["elements"])) return undefined;
+	const clientTime = parsed["clientTime"];
+	return {
+		clientTime:
+			typeof clientTime === "number" && Number.isFinite(clientTime)
+				? clientTime
+				: Date.now(),
+		elements: parsed["elements"] as CanvasElement[],
+		edges: Array.isArray(parsed["edges"])
+			? (parsed["edges"] as never[])
+			: undefined,
+		removeIds: Array.isArray(parsed["removeIds"])
+			? (parsed["removeIds"] as string[])
+			: undefined,
+	};
 }
 
 /**
  * Apply the dsh-cult-canvas plugin surface to a Cordis HostContext.
+ *
+ * @param ctx - Host plugin context.
+ * @param rawConfig - configuration as composed in cordis.patch.yml.
+ * @returns the per-workspace board registry the plugin serves from.
  */
-export function apply(ctx: HostContext, rawConfig: unknown = {}): CanvasStore {
+export function apply(
+	ctx: HostContext,
+	rawConfig: unknown = {},
+): BoardRegistry {
 	const config = resolveCanvasConfig(rawConfig);
 
-	// 1. Core engine instances
-	const store = new CanvasStore();
+	// 1. Core engine instances and the per-workspace board registry
 	const graphEngine = new GraphEngine();
 	const pipelineEngine = new PipelineEngine();
+	const provider = createGenerationProvider(config);
+	// The working-directory projection answers for a live Session object; a bare
+	// id may be an archived or not-yet-published session, and a throw there must
+	// not fail the request.
+	const workspaceOf = (session: unknown): string | undefined => {
+		if (!session) return undefined;
+		try {
+			return ctx.get("workingDirectory")?.get(session as { id: string });
+		} catch {
+			return undefined;
+		}
+	};
+	const registry = new BoardRegistry({
+		resolveWorkspace: (session?: string) =>
+			workspaceOf(session === undefined ? undefined : { id: session }),
+		maxElements: config.maxElements,
+		warn: (message: string) => ctx.logger?.warn?.(message),
+	});
 
 	// 2. Disposer for state cleanup on plugin unload
-	ctx.effect(() => () => {
-		if (
-			typeof (store as unknown as { dispose?: () => void }).dispose ===
-			"function"
-		) {
-			(store as unknown as { dispose: () => void }).dispose();
-		} else if (typeof store.clear === "function") {
-			store.clear();
-		}
-	});
+	ctx.effect(() => () => registry.dispose());
 
-	// 3. Register AI agent tools with disposers
-	const tools = buildCanvasTools(ctx, store, {
-		graphEngine,
-		pipelineEngine,
-		config,
-	});
+	// 3. Register AI agent tools against the session's own board
+	// The agent's own Session object resolves its folder even when the browser
+	// only knows the id, so the first agent edit is what puts the board on disk.
+	const tools = buildCanvasTools(
+		ctx,
+		(exec) =>
+			registry.record(
+				exec?.agent?.session?.id,
+				workspaceOf(exec?.agent?.session),
+			).store,
+		{ graphEngine, pipelineEngine, config, provider },
+	);
 	for (const tool of tools) {
 		ctx.effect(() => ctx.tools.register(tool));
 	}
 
-	// 4. Dynamic injection of authenticated webServer route
+	// 4. The plugin draws its own settings card, so no generated page is wanted
+	ctx.inject(["settings"], (settingsCtx) => {
+		settingsCtx.effect(
+			() =>
+				settingsCtx.settings?.configure({ auto: false }, ctx.fiber) ??
+				(() => {}),
+			"cult-canvas: settings presentation",
+		);
+	});
+
+	// 5. Dynamic injection of authenticated webServer route
 	ctx.inject(["webServer"], (routeCtx) => {
-		const rawServer =
-			(routeCtx as { webServer?: WebServer }).webServer ??
-			routeCtx.get?.("webServer");
-		if (!rawServer) return;
-		const webServer = authenticatedWebServer(routeCtx, rawServer);
+		const webServer = authenticatedWebServer(routeCtx, routeCtx.webServer);
+		if (!webServer) return;
 		routeCtx.effect(
 			() =>
 				webServer.register({
 					kind: "prefix",
 					path: CANVAS_API_ROUTE,
-					handler: (req: IncomingMessage, res: ServerResponse) =>
-						handleCanvasHttp(store, req, res),
-					resource: (req: Request) => handleCanvasResource(store, req),
+					handler: (req: IncomingMessage, res: ServerResponse) => {
+						void handleCanvasHttp(registry, req, res).catch(
+							(error: unknown) => {
+								ctx.logger?.warn?.(
+									`cult-canvas: ${req.method} ${req.url} failed: ${String(error)}`,
+								);
+								if (res.headersSent) {
+									res.destroy();
+									return;
+								}
+								res.writeHead(500, { "content-type": "text/plain" });
+								res.end("Internal Error");
+							},
+						);
+					},
 				}),
 			"cult-canvas: web route",
 		);
 	});
 
-	// 5. System prompt guidance section
+	// 6. System prompt guidance section
 	const order =
 		typeof ctx.systemPrompt?.getSectionOrder === "function"
 			? (ctx.systemPrompt.getSectionOrder("TOOL_CANVAS") ??
@@ -267,7 +486,7 @@ export function apply(ctx: HostContext, rawConfig: unknown = {}): CanvasStore {
 		}),
 	);
 
-	return store;
+	return registry;
 }
 
 export const applyCanvasPlugin = apply;

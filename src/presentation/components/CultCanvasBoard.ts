@@ -20,6 +20,7 @@ import {
 	createTextCard,
 	createWhiteboardShape,
 } from "../../domain/elements.js";
+import { reconcileFromServer } from "../../application/board-sync.js";
 import { dragRect } from "../../domain/geometry.js";
 import type {
 	CanvasEdge,
@@ -65,11 +66,32 @@ export type ElementUpdater =
 	| CanvasElement[]
 	| ((prev: CanvasElement[]) => CanvasElement[]);
 
+/** Board contents handed to "Start project". */
+export interface BoardForProject {
+	elements: CanvasElement[];
+	edges: CanvasEdge[];
+	bible?: Record<string, unknown>;
+}
+
 export interface CultCanvasBoardProps {
 	initialElements?: CanvasElement[];
 	initialEdges?: CanvasEdge[];
 	syncUrl?: string;
 	onStateChange?: (elements: CanvasElement[], edges: CanvasEdge[]) => void;
+	/** Start a session from this board; the board posts its edits first. */
+	onStartProject?: (board: BoardForProject) => void | Promise<void>;
+	/** Whether the shell can start a session at all. */
+	canStartProject?: boolean;
+	/** Whether the tab is on screen; polling pauses when it is not. */
+	visible?: boolean;
+	/** Whether drags and resizes snap to the grid. */
+	snapEnabled?: boolean;
+	/** Grid step in world units. */
+	gridSize?: number;
+	/** Localized toolbar label of the Start project button. */
+	startProjectLabel?: string;
+	/** Localized chip text of an agent-edited element. */
+	agentBadgeLabel?: string;
 	className?: string;
 }
 
@@ -78,6 +100,13 @@ export function CultCanvasBoard({
 	initialEdges = [],
 	syncUrl,
 	onStateChange,
+	onStartProject,
+	canStartProject = false,
+	visible = true,
+	snapEnabled = true,
+	gridSize = 20,
+	startProjectLabel,
+	agentBadgeLabel,
 	className,
 }: CultCanvasBoardProps): ClientNode {
 	// 1. Elements and Edges State
@@ -122,51 +151,177 @@ export function CultCanvasBoard({
 
 	const elementsRef = useRef<CanvasElement[]>(elements);
 	elementsRef.current = elements;
+	const edgesRef = useRef<CanvasEdge[]>(edges);
+	edgesRef.current = edges;
 	const selectedIdsRef = useRef<string[]>(selectedIds);
 	selectedIdsRef.current = selectedIds;
 
-	// Sync notification
+	// Snapping is a setting: without it a drag lands exactly where it was dropped.
+	const snap = useCallback(
+		(value: number): number =>
+			snapEnabled ? snapToGrid(value, gridSize) : Math.round(value),
+		[snapEnabled, gridSize],
+	);
+
+	// A user edit stamps the elements it touched, so the merge can tell the two
+	// writers apart and the agent badge clears on the elements the user now owns.
 	const updateElements = useCallback(
 		(next: ElementUpdater) => {
 			setElements((prev: CanvasElement[]) => {
 				const resolved = typeof next === "function" ? next(prev) : next;
-				elementsRef.current = resolved;
-				if (onStateChange) onStateChange(resolved, edges);
-				return resolved;
+				const before = new Map(prev.map((el) => [el.id, el]));
+				const stamped = resolved.map((el) => {
+					const prior = before.get(el.id);
+					if (
+						prior !== undefined &&
+						prior.text === el.text &&
+						prior.color === el.color &&
+						prior.x === el.x &&
+						prior.y === el.y &&
+						prior.width === el.width &&
+						prior.height === el.height &&
+						prior.updatedBy === el.updatedBy
+					) {
+						return el;
+					}
+					return { ...el, updatedBy: "user" as const, updatedAt: Date.now() };
+				});
+				elementsRef.current = stamped;
+				if (onStateChange) onStateChange(stamped, edges);
+				return stamped;
 			});
 		},
 		[edges, onStateChange],
 	);
 
-	// Collaborative Sync Polling (if syncUrl provided)
+	// Live sync: the Host writes land here, the user's writes leave from the
+	// effect below. Polling stops while the tab is off screen and resumes with a
+	// full read, because `since` keeps the answer small when nothing changed.
+	const revisionRef = useRef(0);
+	const lastSyncedAtRef = useRef(0);
+	const lastPollSignatureRef = useRef("");
+	const removedIdsRef = useRef<string[]>([]);
+	const bibleRef = useRef<Record<string, unknown> | undefined>(undefined);
+
 	useEffect(() => {
-		if (!syncUrl || typeof fetch === "undefined") return () => {};
+		if (!syncUrl || typeof fetch === "undefined" || !visible) return () => {};
 
 		let isMounted = true;
-		const pollState = async () => {
+		const pollState = async (): Promise<void> => {
+			const separator = syncUrl.includes("?") ? "&" : "?";
 			try {
-				const res = await fetch(syncUrl);
+				const res = await fetch(
+					`${syncUrl}${separator}since=${revisionRef.current}`,
+				);
 				if (!res.ok) return;
 				const data = (await res.json()) as {
+					revision?: number;
 					elements?: CanvasElement[];
 					edges?: CanvasEdge[];
+					bible?: Record<string, unknown>;
 				};
-				if (isMounted && data.elements) {
-					setElements(data.elements);
-					if (data.edges) setEdges(data.edges);
-				}
+				if (!isMounted) return;
+				if (typeof data.revision === "number")
+					revisionRef.current = data.revision;
+				bibleRef.current = data.bible;
+				if (!Array.isArray(data.elements)) return;
+
+				const merged = reconcileFromServer(
+					{ elements: elementsRef.current, edges: edgesRef.current },
+					{ elements: data.elements, edges: data.edges ?? [] },
+					lastSyncedAtRef.current,
+				);
+				// The server answers on every poll; only a real change may re-render.
+				const signature = merged.elements
+					.map((el) => `${el.id}:${el.updatedAt ?? 0}`)
+					.join("|");
+				if (signature === lastPollSignatureRef.current) return;
+				lastPollSignatureRef.current = signature;
+				elementsRef.current = merged.elements;
+				setElements(merged.elements);
+				setEdges(merged.edges);
 			} catch {
 				// ignore fetch error in offline/mock environment
 			}
 		};
 
 		void pollState();
-		const interval = setInterval(() => void pollState(), 4000);
+		const interval = setInterval(() => void pollState(), 2000);
 		return () => {
 			isMounted = false;
 			clearInterval(interval);
 		};
-	}, [syncUrl]);
+	}, [syncUrl, visible]);
+
+	// Push local edits: only what the server has not seen yet, plus removals.
+	useEffect(() => {
+		if (!syncUrl || typeof fetch === "undefined") return () => {};
+		const changed = elements.filter(
+			(el) => (el.updatedAt ?? 0) > lastSyncedAtRef.current,
+		);
+		const removed = removedIdsRef.current;
+		if (changed.length === 0 && removed.length === 0) return () => {};
+
+		const clientTime = Date.now();
+		const timer = setTimeout(() => {
+			void fetch(syncUrl, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					clientTime,
+					elements: changed,
+					removeIds: removed,
+				}),
+			})
+				.then((res) => {
+					if (!res.ok) return;
+					lastSyncedAtRef.current = clientTime;
+					removedIdsRef.current = [];
+				})
+				.catch(() => {
+					// offline: the next edit retries
+				});
+		}, 600);
+		return () => clearTimeout(timer);
+	}, [elements, syncUrl]);
+
+	// Start a project: hand the Host the pending edits first, so the file the new
+	// session reads is the board the user is looking at.
+	const startProject = useCallback(async () => {
+		const clientTime = Date.now();
+		const changed = elementsRef.current.filter(
+			(el) => (el.updatedAt ?? 0) > lastSyncedAtRef.current,
+		);
+		const removed = removedIdsRef.current;
+		if (
+			syncUrl &&
+			typeof fetch === "function" &&
+			(changed.length > 0 || removed.length > 0)
+		) {
+			try {
+				const res = await fetch(syncUrl, {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({
+						clientTime,
+						elements: changed,
+						removeIds: removed,
+					}),
+				});
+				if (res.ok) {
+					lastSyncedAtRef.current = clientTime;
+					removedIdsRef.current = [];
+				}
+			} catch {
+				// The Host still flushes whatever it has.
+			}
+		}
+		await onStartProject?.({
+			elements: elementsRef.current,
+			edges: edgesRef.current,
+			bible: bibleRef.current,
+		});
+	}, [syncUrl, onStartProject]);
 
 	// Selection Bounds
 	const selectedElements = elements.filter((e) => selectedIds.includes(e.id));
@@ -186,6 +341,7 @@ export function CultCanvasBoard({
 				selectedIds,
 				order: elements.map((e) => e.id),
 				onDelete: (ids: string[]) => {
+					removedIdsRef.current.push(...ids);
 					setLayerOrderList((prev) => prev.filter((id) => !ids.includes(id)));
 					updateElements((prev: CanvasElement[]) =>
 						prev.filter((el: CanvasElement) => !ids.includes(el.id)),
@@ -203,8 +359,8 @@ export function CultCanvasBoard({
 					const newElements = toDup.map((el) => ({
 						...el,
 						id: `copy_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-						x: snapToGrid(el.x + 40),
-						y: snapToGrid(el.y + 40),
+						x: snap(el.x + 40),
+						y: snap(el.y + 40),
 					}));
 					setLayerOrderList((prev) => [
 						...prev,
@@ -234,7 +390,7 @@ export function CultCanvasBoard({
 				window.removeEventListener("keydown", onKeyDown);
 			}
 		};
-	}, [selectedIds, layerOrderList, elements, updateElements]);
+	}, [selectedIds, layerOrderList, elements, updateElements, snap]);
 
 	const getPointerScreenPoint = (ev: {
 		clientX?: number;
@@ -422,8 +578,8 @@ export function CultCanvasBoard({
 			const id = `sticky_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 			const newSticky = createStickyNote(
 				id,
-				snapToGrid(worldPt.x - DEFAULT_STICKY_SIZE / 2),
-				snapToGrid(worldPt.y - DEFAULT_STICKY_SIZE / 2),
+				snap(worldPt.x - DEFAULT_STICKY_SIZE / 2),
+				snap(worldPt.y - DEFAULT_STICKY_SIZE / 2),
 				"New Note",
 				{ color: stickyColor },
 			);
@@ -436,8 +592,8 @@ export function CultCanvasBoard({
 			const newShape = createWhiteboardShape(
 				id,
 				selectedShape,
-				snapToGrid(worldPt.x - 100),
-				snapToGrid(worldPt.y - 60),
+				snap(worldPt.x - 100),
+				snap(worldPt.y - 60),
 				selectedShape.toUpperCase(),
 			);
 			updateElements((prev: CanvasElement[]) => [...prev, newShape]);
@@ -448,8 +604,8 @@ export function CultCanvasBoard({
 			const id = `text_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 			const newText = createTextCard(
 				id,
-				snapToGrid(worldPt.x - 80),
-				snapToGrid(worldPt.y - 20),
+				snap(worldPt.x - 80),
+				snap(worldPt.y - 20),
 				"Text",
 			);
 			updateElements((prev: CanvasElement[]) => [...prev, newText]);
@@ -503,24 +659,21 @@ export function CultCanvasBoard({
 			let newHeight = startBounds.height;
 
 			if (handle === "e" || handle === "ne" || handle === "se") {
-				newWidth = Math.max(MIN_SIZE, snapToGrid(startBounds.width + totalDx));
+				newWidth = Math.max(MIN_SIZE, snap(startBounds.width + totalDx));
 			} else if (handle === "w" || handle === "nw" || handle === "sw") {
 				const rawWidth = startBounds.width - totalDx;
-				newWidth = Math.max(MIN_SIZE, snapToGrid(rawWidth));
+				newWidth = Math.max(MIN_SIZE, snap(rawWidth));
 				const actualDx = startBounds.width - newWidth;
-				newX = snapToGrid(startBounds.x + actualDx);
+				newX = snap(startBounds.x + actualDx);
 			}
 
 			if (handle === "s" || handle === "se" || handle === "sw") {
-				newHeight = Math.max(
-					MIN_SIZE,
-					snapToGrid(startBounds.height + totalDy),
-				);
+				newHeight = Math.max(MIN_SIZE, snap(startBounds.height + totalDy));
 			} else if (handle === "n" || handle === "ne" || handle === "nw") {
 				const rawHeight = startBounds.height - totalDy;
-				newHeight = Math.max(MIN_SIZE, snapToGrid(rawHeight));
+				newHeight = Math.max(MIN_SIZE, snap(rawHeight));
 				const actualDy = startBounds.height - newHeight;
-				newY = snapToGrid(startBounds.y + actualDy);
+				newY = snap(startBounds.y + actualDy);
 			}
 
 			if (selectedIdsRef.current.length === 1) {
@@ -551,10 +704,10 @@ export function CultCanvasBoard({
 						const relY = start.y - startBounds.y;
 						return {
 							...el,
-							x: snapToGrid(newX + relX * scaleX),
-							y: snapToGrid(newY + relY * scaleY),
-							width: Math.max(MIN_SIZE, snapToGrid(start.width * scaleX)),
-							height: Math.max(MIN_SIZE, snapToGrid(start.height * scaleY)),
+							x: snap(newX + relX * scaleX),
+							y: snap(newY + relY * scaleY),
+							width: Math.max(MIN_SIZE, snap(start.width * scaleX)),
+							height: Math.max(MIN_SIZE, snap(start.height * scaleY)),
 						};
 					}),
 				);
@@ -640,8 +793,8 @@ export function CultCanvasBoard({
 						if (!start) return el;
 						return {
 							...el,
-							x: snapToGrid(start.x + totalDx),
-							y: snapToGrid(start.y + totalDy),
+							x: snap(start.x + totalDx),
+							y: snap(start.y + totalDy),
 						};
 					}),
 				);
@@ -827,6 +980,34 @@ export function CultCanvasBoard({
 				}
 				return null;
 			}),
+		// Agent edits: an outline plus a chip, until the user edits the same element
+		...elements
+			.filter((el) => el.kind !== "stroke" && el.updatedBy === "agent")
+			.map((el) =>
+				h(
+					"div",
+					{
+						key: `agent-${el.id}`,
+						className: "dsh-cc-agent",
+						style: {
+							position: "absolute",
+							left: `${el.x}px`,
+							top: `${el.y}px`,
+							width: `${el.width}px`,
+							height: `${el.height}px`,
+							border: "2px solid var(--dsh-accent, #38bdf8)",
+							borderRadius: "10px",
+							boxSizing: "border-box",
+							pointerEvents: "none",
+						},
+					},
+					h(
+						"span",
+						{ className: "dsh-cc-agent-chip" },
+						agentBadgeLabel ?? "agent",
+					),
+				),
+			),
 		// Selection bounding box and handles
 		selectionBounds && selectedIds.length > 0
 			? h(SelectionOverlay, {
@@ -853,6 +1034,9 @@ export function CultCanvasBoard({
 		h(CanvasToolbar, {
 			activeTool,
 			onSelectTool: setActiveTool,
+			canStartProject,
+			onStartProject: startProject,
+			startProjectLabel,
 			markerColor,
 			onSelectMarkerColor: setMarkerColor,
 			markerWidth,
@@ -865,6 +1049,7 @@ export function CultCanvasBoard({
 		// 2. Interactive Viewport
 		h(CanvasViewport, {
 			viewport,
+			gridSize,
 			onViewportChange: setViewport,
 			svgContent,
 			domContent,
@@ -904,6 +1089,7 @@ export function CultCanvasBoard({
 						})),
 					isActive: true,
 					onDeleteStrokes: (hits: string[]) => {
+						removedIdsRef.current.push(...hits);
 						updateElements((prev: CanvasElement[]) =>
 							prev.filter((e: CanvasElement) => !hits.includes(e.id)),
 						);

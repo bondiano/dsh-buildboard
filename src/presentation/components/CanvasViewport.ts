@@ -60,6 +60,8 @@ export interface CanvasViewportProps {
 	domContent?: ClientNode;
 	previewContent?: ClientNode;
 	marqueeBounds?: RectBounds | null;
+	/** Dot-grid step in world units. */
+	gridSize?: number;
 	cursor?: string;
 	onPointerDown?: (e: unknown) => void;
 	onPointerMove?: (e: unknown) => void;
@@ -74,6 +76,7 @@ export function CanvasViewport({
 	domContent,
 	previewContent,
 	marqueeBounds,
+	gridSize: gridStep = 20,
 	cursor = "default",
 	onPointerDown,
 	onPointerMove,
@@ -133,7 +136,7 @@ export function CanvasViewport({
 	};
 
 	// Background dot grid calculation
-	const gridSize = 20 * viewport.zoom;
+	const gridSize = gridStep * viewport.zoom;
 	const gridOffsetX = ((viewport.x % gridSize) + gridSize) % gridSize;
 	const gridOffsetY = ((viewport.y % gridSize) + gridSize) % gridSize;
 

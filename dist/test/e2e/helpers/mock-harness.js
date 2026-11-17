@@ -311,15 +311,11 @@ export function authenticatedWebServer(ctx, server) {
     });
 }
 export class CanvasStore extends ProductionCanvasStore {
-    maxElements = 5000;
     customBible = {};
     undoStack = [];
     redoStack = [];
     constructor(config = {}) {
-        super();
-        if (config.maxElements) {
-            this.maxElements = config.maxElements;
-        }
+        super(config);
     }
     snapshot() {
         const currentSnapshot = structuredClone({
@@ -352,9 +348,6 @@ export class CanvasStore extends ProductionCanvasStore {
         return { ...super.getBible(), ...this.customBible };
     }
     createElement(element) {
-        if (this.getAllElements().length >= this.maxElements) {
-            throw new Error(`Max canvas elements limit reached (${this.maxElements})`);
-        }
         this.snapshot();
         const id = element.id ||
             `elem_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;

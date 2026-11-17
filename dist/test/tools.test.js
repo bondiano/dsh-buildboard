@@ -545,8 +545,8 @@ describe("tools: Schema & Rendering Contracts", () => {
         assert.deepEqual(clientInject, [
             "slots",
             "locale",
-            "remote",
-            "styles",
+            "sidebarRightTabs",
+            "configForms",
             "uiWorkspace",
         ]);
     });

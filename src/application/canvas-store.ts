@@ -20,14 +20,55 @@ import {
 // Canvas Store (In-Memory State Store)
 // ============================================================================
 
+export interface CanvasStoreOptions {
+	/** Hard cap on distinct elements; the store refuses the create past it. */
+	maxElements?: number;
+}
+
 export class CanvasStore {
 	private elements = new Map<string, CanvasElement>();
 	private edges = new Map<string, CanvasEdge>();
 	private bible?: SeriesBible;
+	private rev = 0;
+	private readonly listeners = new Set<() => void>();
+	private readonly maxElements: number;
 
-	constructor(initialDocument?: CanvasDocument) {
-		if (initialDocument) {
-			this.loadDocument(initialDocument);
+	constructor(options: CanvasStoreOptions | CanvasDocument = {}) {
+		this.maxElements =
+			"maxElements" in options && typeof options.maxElements === "number"
+				? options.maxElements
+				: Number.POSITIVE_INFINITY;
+		if ("elements" in options) {
+			this.loadDocument(options);
+			this.rev = 0;
+		}
+	}
+
+	/** Monotonic document revision; every mutation advances it. */
+	public revision(): number {
+		return this.rev;
+	}
+
+	/**
+	 * Observe document mutations.
+	 * @param listener - called after each mutating operation.
+	 * @returns disposer removing the listener.
+	 */
+	public subscribe(listener: () => void): () => void {
+		this.listeners.add(listener);
+		return () => {
+			this.listeners.delete(listener);
+		};
+	}
+
+	private emit(): void {
+		this.rev += 1;
+		for (const listener of this.listeners) {
+			try {
+				listener();
+			} catch {
+				// A faulty subscriber must not break the mutation that notified it.
+			}
 		}
 	}
 
@@ -51,10 +92,19 @@ export class CanvasStore {
 
 	public setElement(element: CanvasElement): CanvasElement {
 		this.elements.set(element.id, element);
+		this.emit();
 		return element;
 	}
 
 	public createElement(element: CanvasElement): CanvasElement {
+		if (
+			!this.elements.has(element.id) &&
+			this.elements.size >= this.maxElements
+		) {
+			throw new Error(
+				`Max canvas elements limit reached (${this.maxElements})`,
+			);
+		}
 		return this.setElement(element);
 	}
 
@@ -67,6 +117,7 @@ export class CanvasStore {
 
 		const updated = { ...existing, ...patch, id } as CanvasElement;
 		this.elements.set(id, updated);
+		this.emit();
 		return updated;
 	}
 
@@ -91,6 +142,7 @@ export class CanvasStore {
 			}
 		}
 
+		if (deletedElements.length > 0 || deletedEdges.length > 0) this.emit();
 		return { deletedElements, deletedEdges };
 	}
 
@@ -116,6 +168,7 @@ export class CanvasStore {
 			`edge_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 		const fullEdge: CanvasEdge = { ...edge, id };
 		this.edges.set(id, fullEdge);
+		this.emit();
 		return fullEdge;
 	}
 
@@ -124,7 +177,9 @@ export class CanvasStore {
 	}
 
 	public deleteEdge(id: string): boolean {
-		return this.edges.delete(id);
+		const existed = this.edges.delete(id);
+		if (existed) this.emit();
+		return existed;
 	}
 
 	public disconnect(id: string): boolean {
@@ -232,6 +287,7 @@ export class CanvasStore {
 				props: patch.props ? [...patch.props] : this.bible.props,
 			};
 		}
+		this.emit();
 		return this.bible;
 	}
 
@@ -273,6 +329,7 @@ export class CanvasStore {
 		}
 		const nodeCount = Object.keys(elements).length;
 		const edgeCount = Object.keys(edges).length;
+		if (nodeCount > 0 || edgeCount > 0) this.emit();
 		return {
 			nodeCount,
 			edgeCount,
@@ -319,11 +376,13 @@ export class CanvasStore {
 			this.edges.set(edge.id, edge);
 		}
 		this.bible = doc.bible;
+		this.emit();
 	}
 
 	public clear(): void {
 		this.elements.clear();
 		this.edges.clear();
 		this.bible = undefined;
+		this.emit();
 	}
 }

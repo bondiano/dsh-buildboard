@@ -539,16 +539,12 @@ interface CanvasSnapshot {
 }
 
 export class CanvasStore extends ProductionCanvasStore {
-	private maxElements = 5000;
 	private customBible: Record<string, unknown> = {};
 	private undoStack: CanvasSnapshot[] = [];
 	private redoStack: CanvasSnapshot[] = [];
 
 	constructor(config: { maxElements?: number } = {}) {
-		super();
-		if (config.maxElements) {
-			this.maxElements = config.maxElements;
-		}
+		super(config);
 	}
 
 	private snapshot(): void {
@@ -584,11 +580,6 @@ export class CanvasStore extends ProductionCanvasStore {
 	}
 
 	override createElement(element: any): any {
-		if (this.getAllElements().length >= this.maxElements) {
-			throw new Error(
-				`Max canvas elements limit reached (${this.maxElements})`,
-			);
-		}
 		this.snapshot();
 		const id =
 			element.id ||

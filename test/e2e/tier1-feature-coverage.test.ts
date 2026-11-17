@@ -66,7 +66,7 @@ const SPEC_PACKAGE_JSON = {
 	type: "module",
 	exports: {
 		".": "./dist/index.js",
-		"./client": "./dist/client.js",
+		"./client": "./lib/client.js",
 		"./locale/*.json": "./locale/*.json",
 		"./icon": "./icon.svg",
 	},
@@ -77,7 +77,14 @@ const SPEC_PACKAGE_JSON = {
 		client: {
 			platform: "web",
 			immediately: true,
-			inject: ["@deepseek-ai/dsh-client-ui-tool"],
+			inject: [
+				"@deepseek-ai/dsh-api-remotes",
+				"@deepseek-ai/dsh-client-connection",
+				"@deepseek-ai/dsh-client-locale",
+				"@deepseek-ai/dsh-client-ui-settings",
+				"@deepseek-ai/dsh-client-ui-sidebar-right",
+				"@deepseek-ai/dsh-client-ui-workspace",
+			],
 		},
 	},
 };
@@ -133,13 +140,17 @@ describe("Tier 1: Feature Coverage Test Suite", () => {
 			assert.equal(pkg.name, "@local/dsh-cult-canvas");
 			assert.equal(pkg.type, "module");
 			assert.equal(pkg.private, true);
-			// Zero runtime dependencies constraint
-			assert.equal(pkg.dependencies, undefined);
+			// Runtime dependencies are only what the bundle cannot resolve from
+			// the shared harness runtime: the settings schema and xstate.
+			assert.deepEqual(Object.keys(pkg.dependencies ?? {}).sort(), [
+				"@deepseek-ai/schemastery",
+				"xstate",
+			]);
 		});
 
 		it("1.2 package.json exports required entrypoints and assets", () => {
 			assert.equal(pkg.exports["."], "./dist/index.js");
-			assert.equal(pkg.exports["./client"], "./dist/client.js");
+			assert.equal(pkg.exports["./client"], "./lib/client.js");
 			assert.equal(pkg.exports["./icon"], "./icon.svg");
 		});
 
@@ -1517,9 +1528,13 @@ describe("Tier 1: Feature Coverage Test Suite", () => {
 			assert.equal(pkg.dsh?.client?.immediately, true);
 			assert.ok(Array.isArray(pkg.dsh?.client?.inject));
 			assert.ok(
-				pkg.dsh.client.inject.includes("@deepseek-ai/dsh-client-ui-tool"),
+				pkg.dsh.client.inject.includes(
+					"@deepseek-ai/dsh-client-ui-sidebar-right",
+				),
+				"the tab body registers into the right sidebar",
 			);
-			assert.equal(pkg.exports?.["./client"], "./dist/client.js");
+			assert.equal(pkg.exports?.["./client"], "./lib/client.js");
+			assert.equal(pkg.scripts?.["build:client"], "tsdown");
 		});
 
 		it("15.2 client declares injected frontend services", async () => {

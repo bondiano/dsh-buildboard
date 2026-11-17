@@ -9,3 +9,6 @@
         maxElements: 5000
         snapToGrid: true
         gridSize: 20
+        generationProvider: mock
+        generationApiKey: ""
+        generationBaseUrl: ""

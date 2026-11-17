@@ -54,6 +54,12 @@ export interface CanvasToolbarProps {
 	onSelectShape?: (shape: ShapeType) => void;
 	stickyColor?: string;
 	onSelectStickyColor?: (color: string) => void;
+	/** Whether the shell can start a session from this board. */
+	canStartProject?: boolean;
+	/** Start a session briefed with the board. */
+	onStartProject?: () => void;
+	/** Localized label of the Start project button. */
+	startProjectLabel?: string;
 	className?: string;
 }
 
@@ -68,6 +74,9 @@ export function CanvasToolbar({
 	onSelectShape,
 	stickyColor = STICKY_PALETTE_COLORS[0],
 	onSelectStickyColor,
+	canStartProject = false,
+	onStartProject,
+	startProjectLabel = "Start project",
 	className,
 }: CanvasToolbarProps): ClientNode {
 	const [activeFlyout, setActiveFlyout] = useState<
@@ -90,6 +99,32 @@ export function CanvasToolbar({
 	const cls = ["dsh-cult-canvas-toolbar", className ?? ""]
 		.filter(Boolean)
 		.join(" ");
+
+	// Starting a project is a board-level action, so it sits under the tools.
+	const startProjectButton =
+		canStartProject && typeof onStartProject === "function"
+			? h(
+					"button",
+					{
+						type: "button",
+						className: "dsh-cc-start-project",
+						title: startProjectLabel,
+						style: {
+							marginTop: "4px",
+							padding: "6px 8px",
+							fontSize: "11px",
+							fontWeight: 600,
+							borderRadius: "8px",
+							border: "1px solid rgba(255,255,255,0.2)",
+							backgroundColor: "var(--dsh-accent, #38bdf8)",
+							color: "#0b1220",
+							cursor: "pointer",
+						},
+						onClick: () => onStartProject(),
+					},
+					startProjectLabel,
+				)
+			: null;
 
 	return h(
 		"aside",
@@ -142,6 +177,7 @@ export function CanvasToolbar({
 				tool.icon,
 			);
 		}),
+		startProjectButton,
 		// Marker Flyout Panel
 		activeFlyout === "marker" && onSelectMarkerColor && onSelectMarkerWidth
 			? h(

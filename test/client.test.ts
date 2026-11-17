@@ -4,7 +4,9 @@
  * Verifies:
  * - Module loader registration via window.__ModuleLoader__.load
  * - Declared service dependency injection list
- * - Slot injection for @deepseek-ai/dsh-client-ui-tool and tool.call.toolview
+ * - Right-sidebar tab type registration with its guide card
+ * - Tab body and settings card slot registrations
+ * - Toolview registrations for every canvas agent tool
  * - Multi-language locale registration (en, ru, zh)
  * - Stylesheet injection into document.head and clean disposer removal
  * - Component unit tests for MarkerStroke, StickyNote, ShapeElement,
@@ -16,8 +18,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
 	apply,
+	BUNDLE_PACKAGE,
+	CANVAS_TAB_ID,
+	CANVAS_TAB_KIND,
 	CANVAS_TOOL_NAMES,
-	CANVAS_UI_TOOL_SLOT,
 	CLIENT_NAMESPACE,
 	CLIENT_STYLE_ATTR,
 	clientPlugin,
@@ -32,6 +36,8 @@ import {
 	clampMarkerStrokeWidth,
 	computeSelectionBounds,
 	CultCanvasBoard,
+	CultCanvasTab,
+	CanvasSettingsCard,
 	DEFAULT_MARKER_COLOR,
 	DEFAULT_MARKER_WIDTH,
 	DEFAULT_STICKY_SIZE,
@@ -108,8 +114,8 @@ describe("Milestone 3: Client Shell Contract Suite", () => {
 		assert.deepEqual(clientPlugin.inject, [
 			"slots",
 			"locale",
-			"remote",
-			"styles",
+			"sidebarRightTabs",
+			"configForms",
 			"uiWorkspace",
 		]);
 		assert.equal(typeof clientPlugin.apply, "function");
@@ -262,7 +268,48 @@ describe("Milestone 3: Client Shell Contract Suite", () => {
 		);
 	});
 
-	it("3.5 injects slot views for UI tool and all 12 agent toolview cards", () => {
+	it("3.5 registers the sidebar tab type with a guide card on the Start screen", () => {
+		const tabTypes: Array<Record<string, unknown>> = [];
+		const mockCtx = {
+			effect(callback: () => unknown) {
+				return callback();
+			},
+			locale: {
+				register: () => {},
+				bind: () => (k: string) => k,
+			},
+			slots: { inject: () => {}, register: () => ({}) },
+			inject(_services: readonly string[], callback: (child: unknown) => void) {
+				callback({
+					effect(inner: () => unknown) {
+						return inner();
+					},
+					sidebarRightTabs: {
+						register(definition: Record<string, unknown>) {
+							tabTypes.push(definition);
+							return () => {};
+						},
+					},
+				});
+			},
+		};
+
+		apply(
+			mockCtx as unknown as import("../src/presentation/client.js").ClientContext,
+		);
+
+		assert.equal(tabTypes.length, 1);
+		const tab = tabTypes[0]!;
+		assert.equal(tab["id"], CANVAS_TAB_ID);
+		assert.equal(tab["kind"], CANVAS_TAB_KIND);
+		const guide = tab["guide"] as Array<{ id: string; order: number }>;
+		assert.equal(guide.length, 1);
+		assert.equal(guide[0]!.id, "board");
+		assert.equal(guide[0]!.order, 25);
+		assert.equal(typeof (tab["title"] as () => string)(), "string");
+	});
+
+	it("3.6 registers the tab body, the settings card and all 12 toolviews", () => {
 		const slotInjections: Record<string, unknown[]> = {};
 		const mockCtx = {
 			effect: () => {},
@@ -270,22 +317,28 @@ describe("Milestone 3: Client Shell Contract Suite", () => {
 				register: () => {},
 				bind: () => (k: string) => k,
 			},
+			uiWorkspace: { getActiveSession: () => ({ id: "session-active" }) },
+			configForms: {
+				get: () => ({
+					getSnapshot: () => ({
+						status: "ready",
+						value: {},
+						writable: true,
+						revision: 1,
+					}),
+					subscribe: () => () => {},
+					set: async () => true,
+				}),
+				whileServed: (
+					_namespaces: readonly string[],
+					register: () => () => void,
+				) => register(),
+			},
 			slots: {
 				inject(name: string, generator: () => unknown) {
 					const out = generator();
 					const items: unknown[] = [];
-					if (
-						out !== null &&
-						out !== undefined &&
-						typeof (out as { [Symbol.iterator]?: unknown })[Symbol.iterator] ===
-							"function"
-					) {
-						for (const item of out as Iterable<unknown>) {
-							items.push(item);
-						}
-					} else {
-						items.push(out);
-					}
+					for (const item of out as Iterable<unknown>) items.push(item);
 					slotInjections[name] = items;
 				},
 				register(desc: unknown, comp: unknown) {
@@ -298,18 +351,36 @@ describe("Milestone 3: Client Shell Contract Suite", () => {
 			mockCtx as unknown as import("../src/presentation/client.js").ClientContext,
 		);
 
-		// Check UI tool slot
-		assert.ok(slotInjections[CANVAS_UI_TOOL_SLOT] !== undefined);
-		const uiTool = slotInjections[CANVAS_UI_TOOL_SLOT]![0] as {
-			desc: { name: string; id: string };
+		const pane = slotInjections["sidebar.right.pane.tab"]![0] as {
+			desc: { name: string; key: string };
 			comp: unknown;
 		};
-		assert.equal(uiTool.desc.name, CANVAS_UI_TOOL_SLOT);
-		assert.equal(uiTool.desc.id, CLIENT_NAMESPACE);
-		assert.equal(uiTool.comp, CultCanvasBoard);
+		assert.equal(pane.desc.name, "sidebar.right.pane.tab");
+		assert.equal(pane.desc.key, CANVAS_TAB_ID);
+		assert.equal(pane.comp, CultCanvasTab);
 
-		// Check tool.call.toolview registrations
-		assert.ok(slotInjections["tool.call.toolview"] !== undefined);
+		const card = slotInjections["plugins.bundle.config"]![0] as {
+			desc: { name: string; key: string };
+			comp: unknown;
+		};
+		assert.equal(card.desc.name, "plugins.bundle.config");
+		assert.equal(
+			card.desc.key,
+			BUNDLE_PACKAGE,
+			"the card is dispatched by the bundle package name",
+		);
+		assert.equal(card.comp, CanvasSettingsCard);
+
+		// The seat may omit the session id; the tab then follows the active one.
+		const paneInject = pane.desc as unknown as {
+			inject?: (sessionId?: string) => Record<string, unknown>;
+		};
+		assert.equal(paneInject.inject?.()?.["sessionId"], "session-active");
+		assert.equal(
+			paneInject.inject?.("session-explicit")?.["sessionId"],
+			"session-explicit",
+		);
+
 		const registeredCards = slotInjections["tool.call.toolview"] as Array<{
 			desc: { name: string; key: string };
 			comp: unknown;

@@ -4,7 +4,9 @@
  * Verifies:
  * - Module loader registration via window.__ModuleLoader__.load
  * - Declared service dependency injection list
- * - Slot injection for @deepseek-ai/dsh-client-ui-tool and tool.call.toolview
+ * - Right-sidebar tab type registration with its guide card
+ * - Tab body and settings card slot registrations
+ * - Toolview registrations for every canvas agent tool
  * - Multi-language locale registration (en, ru, zh)
  * - Stylesheet injection into document.head and clean disposer removal
  * - Component unit tests for MarkerStroke, StickyNote, ShapeElement,
@@ -13,8 +15,8 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { apply, CANVAS_TOOL_NAMES, CANVAS_UI_TOOL_SLOT, CLIENT_NAMESPACE, CLIENT_STYLE_ATTR, clientPlugin, clientPluginFactory, inject, } from "../src/presentation/client.js";
-import { CanvasMinimap, CanvasToolbar, CanvasToolView, CanvasViewport, clampMarkerStrokeWidth, computeSelectionBounds, CultCanvasBoard, DEFAULT_MARKER_COLOR, DEFAULT_MARKER_WIDTH, DEFAULT_STICKY_SIZE, DEFAULT_VIEWPORT, EraserSweep, generateMarkerCenterlinePath, generateMarkerOutlinePath, getShapePaddingCompensation, getShapeSvgPath, handleManipulationKeyDown, layerOrder, MARKER_PALETTE_COLORS, MARKER_PRESET_WIDTHS, MarkerStroke, MIN_MARKER_WIDTH, MAX_MARKER_WIDTH, screenToWorld, SelectionOverlay, setReact, ShapeElement, snapToGrid, STICKY_PALETTE_COLORS, StickyNote, strokeOutlinePoints, SUPPORTED_SHAPES, sweepAndCollectHitStrokes, WHITEBOARD_TOOLS, worldToScreen, } from "../src/presentation/components/index.js";
+import { apply, BUNDLE_PACKAGE, CANVAS_TAB_ID, CANVAS_TAB_KIND, CANVAS_TOOL_NAMES, CLIENT_NAMESPACE, CLIENT_STYLE_ATTR, clientPlugin, clientPluginFactory, inject, } from "../src/presentation/client.js";
+import { CanvasMinimap, CanvasToolbar, CanvasToolView, CanvasViewport, clampMarkerStrokeWidth, computeSelectionBounds, CultCanvasBoard, CultCanvasTab, CanvasSettingsCard, DEFAULT_MARKER_COLOR, DEFAULT_MARKER_WIDTH, DEFAULT_STICKY_SIZE, DEFAULT_VIEWPORT, EraserSweep, generateMarkerCenterlinePath, generateMarkerOutlinePath, getShapePaddingCompensation, getShapeSvgPath, handleManipulationKeyDown, layerOrder, MARKER_PALETTE_COLORS, MARKER_PRESET_WIDTHS, MarkerStroke, MIN_MARKER_WIDTH, MAX_MARKER_WIDTH, screenToWorld, SelectionOverlay, setReact, ShapeElement, snapToGrid, STICKY_PALETTE_COLORS, StickyNote, strokeOutlinePoints, SUPPORTED_SHAPES, sweepAndCollectHitStrokes, WHITEBOARD_TOOLS, worldToScreen, } from "../src/presentation/components/index.js";
 import { CANVAS_CLIENT_STYLES } from "../src/presentation/styles.js";
 // Setup mock React runtime for headless test evaluation
 const mockReact = {
@@ -54,8 +56,8 @@ describe("Milestone 3: Client Shell Contract Suite", () => {
         assert.deepEqual(clientPlugin.inject, [
             "slots",
             "locale",
-            "remote",
-            "styles",
+            "sidebarRightTabs",
+            "configForms",
             "uiWorkspace",
         ]);
         assert.equal(typeof clientPlugin.apply, "function");
@@ -161,7 +163,43 @@ describe("Milestone 3: Client Shell Contract Suite", () => {
         disposerFn();
         assert.equal(removed, true, "Disposer must remove injected style from document.head");
     });
-    it("3.5 injects slot views for UI tool and all 12 agent toolview cards", () => {
+    it("3.5 registers the sidebar tab type with a guide card on the Start screen", () => {
+        const tabTypes = [];
+        const mockCtx = {
+            effect(callback) {
+                return callback();
+            },
+            locale: {
+                register: () => { },
+                bind: () => (k) => k,
+            },
+            slots: { inject: () => { }, register: () => ({}) },
+            inject(_services, callback) {
+                callback({
+                    effect(inner) {
+                        return inner();
+                    },
+                    sidebarRightTabs: {
+                        register(definition) {
+                            tabTypes.push(definition);
+                            return () => { };
+                        },
+                    },
+                });
+            },
+        };
+        apply(mockCtx);
+        assert.equal(tabTypes.length, 1);
+        const tab = tabTypes[0];
+        assert.equal(tab["id"], CANVAS_TAB_ID);
+        assert.equal(tab["kind"], CANVAS_TAB_KIND);
+        const guide = tab["guide"];
+        assert.equal(guide.length, 1);
+        assert.equal(guide[0].id, "board");
+        assert.equal(guide[0].order, 25);
+        assert.equal(typeof tab["title"](), "string");
+    });
+    it("3.6 registers the tab body, the settings card and all 12 toolviews", () => {
         const slotInjections = {};
         const mockCtx = {
             effect: () => { },
@@ -169,21 +207,26 @@ describe("Milestone 3: Client Shell Contract Suite", () => {
                 register: () => { },
                 bind: () => (k) => k,
             },
+            uiWorkspace: { getActiveSession: () => ({ id: "session-active" }) },
+            configForms: {
+                get: () => ({
+                    getSnapshot: () => ({
+                        status: "ready",
+                        value: {},
+                        writable: true,
+                        revision: 1,
+                    }),
+                    subscribe: () => () => { },
+                    set: async () => true,
+                }),
+                whileServed: (_namespaces, register) => register(),
+            },
             slots: {
                 inject(name, generator) {
                     const out = generator();
                     const items = [];
-                    if (out !== null &&
-                        out !== undefined &&
-                        typeof out[Symbol.iterator] ===
-                            "function") {
-                        for (const item of out) {
-                            items.push(item);
-                        }
-                    }
-                    else {
-                        items.push(out);
-                    }
+                    for (const item of out)
+                        items.push(item);
                     slotInjections[name] = items;
                 },
                 register(desc, comp) {
@@ -192,14 +235,18 @@ describe("Milestone 3: Client Shell Contract Suite", () => {
             },
         };
         apply(mockCtx);
-        // Check UI tool slot
-        assert.ok(slotInjections[CANVAS_UI_TOOL_SLOT] !== undefined);
-        const uiTool = slotInjections[CANVAS_UI_TOOL_SLOT][0];
-        assert.equal(uiTool.desc.name, CANVAS_UI_TOOL_SLOT);
-        assert.equal(uiTool.desc.id, CLIENT_NAMESPACE);
-        assert.equal(uiTool.comp, CultCanvasBoard);
-        // Check tool.call.toolview registrations
-        assert.ok(slotInjections["tool.call.toolview"] !== undefined);
+        const pane = slotInjections["sidebar.right.pane.tab"][0];
+        assert.equal(pane.desc.name, "sidebar.right.pane.tab");
+        assert.equal(pane.desc.key, CANVAS_TAB_ID);
+        assert.equal(pane.comp, CultCanvasTab);
+        const card = slotInjections["plugins.bundle.config"][0];
+        assert.equal(card.desc.name, "plugins.bundle.config");
+        assert.equal(card.desc.key, BUNDLE_PACKAGE, "the card is dispatched by the bundle package name");
+        assert.equal(card.comp, CanvasSettingsCard);
+        // The seat may omit the session id; the tab then follows the active one.
+        const paneInject = pane.desc;
+        assert.equal(paneInject.inject?.()?.["sessionId"], "session-active");
+        assert.equal(paneInject.inject?.("session-explicit")?.["sessionId"], "session-explicit");
         const registeredCards = slotInjections["tool.call.toolview"];
         assert.equal(registeredCards.length, CANVAS_TOOL_NAMES.length);
         const registeredKeys = registeredCards.map((r) => r.desc.key);

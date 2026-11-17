@@ -424,6 +424,26 @@ export const CANVAS_CLIENT_STYLES = `
 .dsh-cult-canvas-status-completed { background: #166534; color: #86efac; }
 .dsh-cult-canvas-status-failed { background: #991b1b; color: #fca5a5; }
 
+.dsh-cc-agent {
+	box-shadow: 0 0 0 1px var(--dsh-accent, #38bdf8) inset;
+}
+
+.dsh-cc-agent-chip {
+	position: absolute;
+	top: -10px;
+	left: -2px;
+	padding: 1px 6px;
+	border-radius: 9999px;
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1.4;
+	letter-spacing: 0.02em;
+	text-transform: lowercase;
+	background: var(--dsh-accent, #38bdf8);
+	color: #0b1220;
+	white-space: nowrap;
+}
+
 @keyframes pulse {
 	0%, 100% { opacity: 1; }
 	50% { opacity: 0.5; }
