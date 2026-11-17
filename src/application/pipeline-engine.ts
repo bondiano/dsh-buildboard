@@ -21,6 +21,11 @@ import { MULTI_INPUT_PORTS } from "../domain/ports.js";
 import type { CanvasStore } from "./canvas-store.js";
 import { GraphEngine } from "./graph-engine.js";
 import type { CanvasElement, SeriesBible } from "../domain/types.js";
+import {
+	nextPipelineStage,
+	STAGE_ENTRY_EVENT,
+} from "../domain/machines/pipeline.machine.js";
+import { nextElementStatus } from "../domain/machines/element.machine.js";
 import type { GenerationProvider } from "../infrastructure/generation-api.js";
 
 // =============================================================================
@@ -268,14 +273,16 @@ export function gateStage(
 export function inferPipelineStage(store: CanvasStore): PipelineStage {
 	const elements = store.getAllElements();
 	const bible = store.getBible();
-	let idx = 0; // brief
+	// Highest stage with evidence; assigned in stage order so the last
+	// satisfied condition wins (same precedence as the former max arithmetic).
+	let target: Exclude<PipelineStage, "brief"> | null = null;
 
 	const bibleAny = Boolean(
 		String(bible?.worldview || "").trim() ||
 		String(bible?.style || "").trim() ||
 		(bible?.characters || []).length > 0,
 	);
-	if (bibleAny) idx = Math.max(idx, STAGE_INDEX.bible);
+	if (bibleAny) target = "bible";
 
 	const isDone = (el: CanvasElement) =>
 		el.status === "completed" ||
@@ -289,7 +296,7 @@ export function inferPipelineStage(store: CanvasStore): PipelineStage {
 				((el.data as { assetId?: string })?.assetId || isDone(el)),
 		)
 	) {
-		idx = Math.max(idx, STAGE_INDEX.assets);
+		target = "assets";
 	}
 
 	if (
@@ -299,7 +306,7 @@ export function inferPipelineStage(store: CanvasStore): PipelineStage {
 				(el as unknown as { type?: string }).type === "script",
 		)
 	) {
-		idx = Math.max(idx, STAGE_INDEX.script);
+		target = "script";
 	}
 
 	const sbWithShots = elements.filter((el) => {
@@ -316,7 +323,7 @@ export function inferPipelineStage(store: CanvasStore): PipelineStage {
 	});
 
 	if (sbWithShots.length > 0) {
-		idx = Math.max(idx, STAGE_INDEX.storyboard);
+		target = "storyboard";
 		const allReady = sbWithShots.every((el) => {
 			const shots =
 				(el.data as { shots?: StoryboardShot[] })?.shots ||
@@ -324,7 +331,7 @@ export function inferPipelineStage(store: CanvasStore): PipelineStage {
 			return gateStoryboard(shots).ok;
 		});
 		if (allReady) {
-			idx = Math.max(idx, STAGE_INDEX.shots_ready);
+			target = "shots_ready";
 		}
 	}
 
@@ -337,7 +344,7 @@ export function inferPipelineStage(store: CanvasStore): PipelineStage {
 					(el.data as { status?: string })?.status === "generating"),
 		)
 	) {
-		idx = Math.max(idx, STAGE_INDEX.generating);
+		target = "generating";
 	}
 
 	if (
@@ -348,7 +355,7 @@ export function inferPipelineStage(store: CanvasStore): PipelineStage {
 				isDone(el),
 		)
 	) {
-		idx = Math.max(idx, STAGE_INDEX.qc);
+		target = "qc";
 	}
 
 	if (
@@ -359,7 +366,7 @@ export function inferPipelineStage(store: CanvasStore): PipelineStage {
 				isDone(el),
 		)
 	) {
-		idx = Math.max(idx, STAGE_INDEX.post);
+		target = "post";
 	}
 
 	const bibleFull = Boolean(
@@ -367,11 +374,19 @@ export function inferPipelineStage(store: CanvasStore): PipelineStage {
 		String(bible?.style || "").trim() &&
 		(bible?.characters || []).length > 0,
 	);
-	if (bibleFull && idx < STAGE_INDEX.bible) {
-		idx = STAGE_INDEX.bible;
-	}
+	// bibleFull override: idx was < bible only when no stage had evidence yet.
+	if (bibleFull && target === null) target = "bible";
 
-	return PRODUCTION_STAGES[idx] ?? "brief";
+	// Drive the productionPipeline machine from brief through every stage up to
+	// the highest satisfied one (bridging evidence gaps) and return its value.
+	if (!target) return "brief";
+	let stage: PipelineStage = "brief";
+	for (const s of PRODUCTION_STAGES) {
+		if (s === "brief") continue;
+		stage = nextPipelineStage(stage, STAGE_ENTRY_EVENT[s]);
+		if (s === target) break;
+	}
+	return stage;
 }
 
 // =============================================================================
@@ -1532,7 +1547,10 @@ export class PipelineEngine {
 			throw new Error(`Node not found: ${nodeId}`);
 		}
 
-		store.updateElement(nodeId, { status: "running" });
+		// Fresh canvasElement machine run per execution: idle --EXECUTE--> running.
+		store.updateElement(nodeId, {
+			status: nextElementStatus("idle", "EXECUTE"),
+		});
 
 		try {
 			if (options.signal?.aborted) {
@@ -1615,7 +1633,7 @@ export class PipelineEngine {
 				`Generated content for ${node.id}`;
 
 			store.updateElement(nodeId, {
-				status: "completed",
+				status: nextElementStatus("running", "COMPLETE"),
 				data: {
 					...node.data,
 					...customData,
@@ -1640,7 +1658,7 @@ export class PipelineEngine {
 
 			const errorMsg = (err as Error).message || "Execution failed";
 			store.updateElement(nodeId, {
-				status: "failed",
+				status: nextElementStatus("running", "FAIL"),
 				data: { ...node.data, error: errorMsg },
 			});
 
