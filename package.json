@@ -1,6 +1,6 @@
 {
 	"name": "@local/dsh-buildboard",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"private": true,
 	"type": "module",
 	"description": "Heptabase-style whiteboard for DeepSeek Harness: cards, documents, agent research and implementation workflows on tldraw + xstate.",
