@@ -76,10 +76,40 @@ export function BuildboardApp(props) {
                                 if (event.key === "Enter") {
                                     store.send({ type: "SELECT_CARD", card: item });
                                 }
-                            }, role: "button", tabIndex: 0, children: [item.title, _jsxs("div", { className: "meta", children: [item.scope, " \u00B7 ", item.excerpt] })] }, `${item.scope}:${item.id}`)))] })), context.workspace === undefined ? (_jsx("div", { className: "dsh-bb-board dsh-bb-fallback", role: "status", style: { padding: 16, color: "#eee" }, children: label(props.t, "empty.loading", "Загрузка доски…") })) : (_jsx(BoardView, { sessionId: props.sessionId, board: context.board, licenseKey: props.licenseKey, pollIntervalMs: props.pollIntervalMs, visible: props.visible, researchLabel: label(props.t, "toolbar.research", "Research"), implementLabel: label(props.t, "toolbar.implement", "Implement"), prettifyLabel: label(props.t, "toolbar.prettify", "Prettify layout"), onResearch: () => {
+                            }, role: "button", tabIndex: 0, children: [item.title, _jsxs("div", { className: "meta", children: [item.scope, " \u00B7 ", item.excerpt] })] }, `${item.scope}:${item.id}`)))] })), context.workspace === undefined ? (_jsx("div", { className: "dsh-bb-board dsh-bb-fallback", role: "status", style: { padding: 16, color: "#eee" }, children: label(props.t, "empty.loading", "Загрузка доски…") })) : (_jsx(BoardView, { sessionId: props.sessionId, board: context.board, boards: context.boards, licenseKey: props.licenseKey, pollIntervalMs: props.pollIntervalMs, visible: props.visible, researchLabel: label(props.t, "toolbar.research", "Research"), implementLabel: label(props.t, "toolbar.implement", "Implement"), prettifyLabel: label(props.t, "toolbar.prettify", "Prettify layout"), boardsLabel: label(props.t, "boards.title", "Boards"), newBoardLabel: label(props.t, "boards.new", "New board"), onResearch: () => {
                         void startRun("research");
                     }, onImplement: () => {
                         void startRun("implement");
+                    }, onSelectBoard: (slug) => {
+                        store.send({ type: "SET_BOARD", board: slug });
+                    }, onCreateBoard: () => {
+                        void (async () => {
+                            const sessionQuery = props.sessionId
+                                ? `session=${encodeURIComponent(props.sessionId)}`
+                                : "";
+                            try {
+                                const response = await fetch(`${BUILDBOARD_API_ROUTE}/boards?${sessionQuery}`, {
+                                    method: "POST",
+                                    headers: { "content-type": "application/json" },
+                                    body: JSON.stringify({
+                                        title: `Board ${context.boards.length + 1}`,
+                                    }),
+                                });
+                                const body = (await response.json());
+                                if (typeof body.slug === "string") {
+                                    store.send({ type: "SET_BOARD", board: body.slug });
+                                }
+                                store.send({
+                                    type: "CONFIGURE",
+                                    sessionId: props.sessionId,
+                                    visible: props.visible !== false,
+                                    pollIntervalMs: props.pollIntervalMs ?? 2000,
+                                });
+                            }
+                            catch {
+                                // catalog poll will catch up
+                            }
+                        })();
                     } })), props.compact ? null : (_jsxs("aside", { className: "dsh-bb-detail", children: [context.selectedCard ? (_jsx(CardEditor, { scope: context.selectedCard.scope, id: context.selectedCard.id, title: context.cardTitle || context.selectedCard.title, body: context.cardBody, sessionId: props.sessionId, onSaved: (next) => {
                                 store.send({
                                     type: "CARD_SAVED",

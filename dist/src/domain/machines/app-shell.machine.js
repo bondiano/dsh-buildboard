@@ -2,10 +2,12 @@
  * Client app shell: workspace resolve, ensure, and catalog refresh.
  */
 import { assign, fromCallback, fromPromise, setup } from "xstate";
-function preferBoard(boards, current) {
+/** Keep an existing selection; otherwise prefer the newest session board. */
+export function preferBoard(boards, current) {
     if (boards.length === 0)
         return current || "main";
-    if (boards.some((item) => item.slug === current) && current !== "main") {
+    // Keep whatever the user (or /canvas) already selected, including "main".
+    if (current && boards.some((item) => item.slug === current)) {
         return current;
     }
     const sorted = [...boards].sort((a, b) => b.updatedAt - a.updatedAt);

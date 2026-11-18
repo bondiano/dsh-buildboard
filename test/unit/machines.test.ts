@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createActor, fromCallback, fromPromise } from "xstate";
 import { test } from "node:test";
 import {
+	preferBoard,
 	appShellMachine,
 	type AppShellCatalog,
 } from "../../src/domain/machines/app-shell.machine.js";
@@ -10,6 +11,28 @@ import { cardEditorMachine } from "../../src/domain/machines/card-editor.machine
 import { nextSyncStatus } from "../../src/domain/machines/board-sync.machine.js";
 import { nextRunStatus } from "../../src/domain/machines/run.machine.js";
 import { createActorStore } from "../../src/application/actor-store.js";
+
+test("preferBoard keeps an explicit selection including main", () => {
+	const boards = [
+		{
+			id: "1",
+			slug: "main",
+			title: "Main",
+			updatedAt: 1,
+			revision: 1,
+		},
+		{
+			id: "2",
+			slug: "session-abc",
+			title: "Session",
+			updatedAt: 99,
+			revision: 1,
+		},
+	];
+	assert.equal(preferBoard(boards, "main"), "main");
+	assert.equal(preferBoard(boards, "session-abc"), "session-abc");
+	assert.equal(preferBoard(boards, "missing"), "session-abc");
+});
 
 test("run machine rejects illegal transitions", () => {
 	assert.throws(() => nextRunStatus("draft", "START"));

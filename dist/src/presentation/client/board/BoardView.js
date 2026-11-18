@@ -3,6 +3,7 @@ import * as React from "react";
 import { createBoardSessionStore } from "../../../application/board-session-store.js";
 import { useActorStore } from "../hooks/useActorStore.js";
 import { BuildboardMainMenu } from "./BuildboardMenu.js";
+import { BuildboardPageMenu } from "./BuildboardPageMenu.js";
 import { CardShapeUtil } from "./CardShape.js";
 function useBoardConfigure(store, props) {
     const board = props.board ?? "main";
@@ -48,6 +49,7 @@ export function BoardView(props) {
         const prettifyLabel = props.prettifyLabel ?? "Prettify layout";
         return (_jsxs("div", { className: "dsh-bb-board", "data-buildboard-board": context.board, style: boardStyle, children: [_jsxs("div", { className: "dsh-bb-sync", "data-sync": context.sync, children: ["sync: ", context.sync] }), _jsx(Tldraw, { licenseKey: props.licenseKey || undefined, store: tlStore, inferDarkMode: true, shapeUtils: [...defaultShapeUtils, CardShapeUtil], components: {
                         MainMenu: () => (_jsx(BuildboardMainMenu, { mod: mod, researchLabel: researchLabel, implementLabel: implementLabel, prettifyLabel: prettifyLabel, onResearch: props.onResearch, onImplement: props.onImplement })),
+                        PageMenu: () => (_jsx(BuildboardPageMenu, { boards: props.boards ?? [], currentSlug: props.board ?? context.board, boardsLabel: props.boardsLabel, newBoardLabel: props.newBoardLabel, onSelectBoard: (slug) => props.onSelectBoard?.(slug), onCreateBoard: props.onCreateBoard })),
                     }, onMount: (editor) => {
                         store.setEditor(editor);
                         const shapeCount = Object.keys(tlStore.serialize("document") ?? {}).filter((id) => id.startsWith("shape:")).length;

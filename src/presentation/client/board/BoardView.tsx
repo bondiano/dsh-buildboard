@@ -1,20 +1,27 @@
 import * as React from "react";
 import { createBoardSessionStore } from "../../../application/board-session-store.js";
+import type { BoardSummary } from "../../../domain/board.js";
 import { useActorStore } from "../hooks/useActorStore.js";
 import { BuildboardMainMenu } from "./BuildboardMenu.js";
+import { BuildboardPageMenu } from "./BuildboardPageMenu.js";
 import { CardShapeUtil } from "./CardShape.js";
 
 export interface BoardViewProps {
 	sessionId?: string;
 	board?: string;
+	boards?: BoardSummary[];
 	licenseKey?: string;
 	pollIntervalMs?: number;
 	visible?: boolean;
 	researchLabel?: string;
 	implementLabel?: string;
 	prettifyLabel?: string;
+	boardsLabel?: string;
+	newBoardLabel?: string;
 	onResearch?: () => void;
 	onImplement?: () => void;
+	onSelectBoard?: (slug: string) => void;
+	onCreateBoard?: () => void;
 }
 
 function useBoardConfigure(
@@ -96,6 +103,16 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 								prettifyLabel={prettifyLabel}
 								onResearch={props.onResearch}
 								onImplement={props.onImplement}
+							/>
+						),
+						PageMenu: () => (
+							<BuildboardPageMenu
+								boards={props.boards ?? []}
+								currentSlug={props.board ?? context.board}
+								boardsLabel={props.boardsLabel}
+								newBoardLabel={props.newBoardLabel}
+								onSelectBoard={(slug) => props.onSelectBoard?.(slug)}
+								onCreateBoard={props.onCreateBoard}
 							/>
 						),
 					}}

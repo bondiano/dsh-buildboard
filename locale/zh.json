@@ -18,6 +18,7 @@
 	"library.project": "项目",
 	"library.global": "全局",
 	"boards.title": "画板",
+	"boards.new": "新建画板",
 	"runs.title": "运行",
 	"editor.save": "保存",
 	"editor.backlinks": "反向链接",

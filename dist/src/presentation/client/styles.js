@@ -109,6 +109,95 @@ export const BUILDBOARD_STYLES = `
 	line-height: 1.4;
 	opacity: 0.75;
 }
+.dsh-bb-page-menu {
+	position: relative;
+	z-index: 3;
+	pointer-events: all;
+}
+.dsh-bb-page-menu-trigger {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	max-width: 220px;
+	appearance: none;
+	border: 1px solid var(--color-muted-1, rgba(0,0,0,.12));
+	background: var(--color-panel, #fff);
+	color: var(--color-text, #111);
+	border-radius: 8px;
+	padding: 6px 10px;
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.dsh-bb-page-menu-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 600;
+}
+.dsh-bb-page-menu-count {
+	flex: 0 0 auto;
+	min-width: 1.4em;
+	padding: 0 5px;
+	border-radius: 999px;
+	background: var(--color-muted-1, rgba(0,0,0,.08));
+	font-size: 10px;
+	text-align: center;
+}
+.dsh-bb-page-menu-popover {
+	position: absolute;
+	top: calc(100% + 6px);
+	left: 0;
+	min-width: 240px;
+	max-width: 320px;
+	max-height: 320px;
+	overflow: auto;
+	border: 1px solid var(--color-muted-1, rgba(0,0,0,.12));
+	border-radius: 10px;
+	background: var(--color-panel, #fff);
+	color: var(--color-text, #111);
+	box-shadow: 0 8px 24px rgba(0,0,0,.18);
+	padding: 6px;
+}
+.dsh-bb-page-menu-item {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+	width: 100%;
+	appearance: none;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	border-radius: 8px;
+	padding: 8px 10px;
+	text-align: left;
+	cursor: pointer;
+	font: inherit;
+}
+.dsh-bb-page-menu-item:hover,
+.dsh-bb-page-menu-item.is-active {
+	background: var(--color-muted-2, rgba(0,0,0,.06));
+}
+.dsh-bb-page-menu-item-title {
+	font-size: 12px;
+	font-weight: 600;
+}
+.dsh-bb-page-menu-item-slug {
+	font-size: 10px;
+	opacity: 0.65;
+}
+.dsh-bb-page-menu-create {
+	margin-top: 4px;
+	border-top: 1px solid var(--color-muted-1, rgba(0,0,0,.1));
+	border-radius: 0 0 8px 8px;
+	font-weight: 600;
+}
+.dsh-bb-page-menu-empty {
+	padding: 10px;
+	font-size: 12px;
+	opacity: 0.7;
+}
 .dsh-bb-fallback {
 	padding: 24px;
 	opacity: 0.8;

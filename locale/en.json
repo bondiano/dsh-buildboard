@@ -18,6 +18,7 @@
 	"library.project": "Project",
 	"library.global": "Global",
 	"boards.title": "Boards",
+	"boards.new": "New board",
 	"runs.title": "Runs",
 	"editor.save": "Save",
 	"editor.backlinks": "Backlinks",

@@ -77,7 +77,7 @@ export class BoardRegistry {
             id: createId("board"),
             slug,
             title: input.title,
-            records: normalizeBoardRecords(input.records ?? emptyPageRecords()),
+            records: normalizeBoardRecords(input.records ?? emptyPageRecords(input.title)),
             revision: 1,
             createdAt: now,
             updatedAt: now,
@@ -184,12 +184,12 @@ export class BoardRegistry {
         await rename(tmp, path);
     }
 }
-function emptyPageRecords() {
+function emptyPageRecords(pageName = "Page 1") {
     return {
         "page:page": {
             id: "page:page",
             typeName: "page",
-            name: "Page 1",
+            name: pageName,
             meta: {},
             index: "a1",
         },

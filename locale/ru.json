@@ -18,6 +18,7 @@
 	"library.project": "Проект",
 	"library.global": "Глобальные",
 	"boards.title": "Доски",
+	"boards.new": "Новая доска",
 	"runs.title": "Запуски",
 	"editor.save": "Сохранить",
 	"editor.backlinks": "Обратные ссылки",

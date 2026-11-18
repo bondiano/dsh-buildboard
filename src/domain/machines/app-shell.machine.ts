@@ -50,9 +50,11 @@ export type AppShellEvent =
 	| { type: "CARD_SAVED"; title: string; body: string }
 	| { type: "TICK" };
 
-function preferBoard(boards: BoardSummary[], current: string): string {
+/** Keep an existing selection; otherwise prefer the newest session board. */
+export function preferBoard(boards: BoardSummary[], current: string): string {
 	if (boards.length === 0) return current || "main";
-	if (boards.some((item) => item.slug === current) && current !== "main") {
+	// Keep whatever the user (or /canvas) already selected, including "main".
+	if (current && boards.some((item) => item.slug === current)) {
 		return current;
 	}
 	const sorted = [...boards].sort((a, b) => b.updatedAt - a.updatedAt);
