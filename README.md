@@ -6,9 +6,9 @@ Heptabase-style whiteboard for DeepSeek Harness: **cards** (project + global), *
 
 ## Screenshot
 
-![Buildboard layout mock from the e2e harness (not the live UI)](docs/screenshots/board.png)
+![Buildboard `/canvas` architecture board with frames, cards, and labeled arrows](docs/screenshots/board.jpg)
 
-> The image above is a static test mock. The live board opens from the **Buildboard** tab in the right sidebar (or `/canvas` in chat).
+> Live board from `/canvas` — frames as underlays, component cards, and bound arrows. Open the **Buildboard** tab in the right sidebar (or `/canvas` in chat).
 
 ## Features
 

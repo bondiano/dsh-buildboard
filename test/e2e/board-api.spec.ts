@@ -56,7 +56,7 @@ test("board state API returns seeded demo board", async () => {
 test("demo page screenshot", async () => {
 	test.skip(
 		process.env.DSH_ALLOW_BROWSER !== "1",
-		"set DSH_ALLOW_BROWSER=1 to refresh docs/screenshots/board.png",
+		"set DSH_ALLOW_BROWSER=1 to refresh docs/screenshots/harness-mock.png",
 	);
 	const harness = await startHarness();
 	const browser = await chromium.launch();
@@ -68,8 +68,9 @@ test("demo page screenshot", async () => {
 		await page.goto(base, { waitUntil: "domcontentloaded" });
 		await expect(page.getByText("Launch checklist")).toBeVisible();
 		await mkdir(join(here, "../../docs/screenshots"), { recursive: true });
+		// Keep docs/screenshots/board.png as the live README shot; harness writes a separate mock.
 		await page.screenshot({
-			path: join(here, "../../docs/screenshots/board.png"),
+			path: join(here, "../../docs/screenshots/harness-mock.png"),
 			fullPage: true,
 		});
 	} finally {
