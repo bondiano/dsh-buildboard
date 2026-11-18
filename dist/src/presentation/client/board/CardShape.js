@@ -37,8 +37,8 @@ export class CardShapeUtil extends BaseBoxShapeUtil {
         return (_jsxs(HTMLContainer, { style: {
                 width: shape.props.w,
                 height: shape.props.h,
-                background: `var(--color-low, ${CARD_CHROME.background})`,
-                border: `1px solid var(--color-muted-1, ${CARD_CHROME.border})`,
+                background: `var(--color-panel, ${CARD_CHROME.background})`,
+                border: `1.5px solid var(--color-text-3, ${CARD_CHROME.border})`,
                 color: `var(--color-text, ${CARD_CHROME.title})`,
                 borderRadius: 10,
                 padding: 12,
@@ -48,6 +48,7 @@ export class CardShapeUtil extends BaseBoxShapeUtil {
                 display: "flex",
                 flexDirection: "column",
                 gap: 6,
+                boxShadow: "inset 3px 0 0 var(--color-selected, #3b82f6)",
             }, children: [_jsxs("div", { style: {
                         display: "flex",
                         alignItems: "center",

@@ -46,7 +46,7 @@ export function BoardView(props) {
         const researchLabel = props.researchLabel ?? "Research";
         const implementLabel = props.implementLabel ?? "Implement";
         const prettifyLabel = props.prettifyLabel ?? "Prettify layout";
-        return (_jsxs("div", { className: "dsh-bb-board", "data-buildboard-board": context.board, style: boardStyle, children: [_jsxs("div", { className: "dsh-bb-sync", "data-sync": context.sync, children: ["sync: ", context.sync] }), _jsx(Tldraw, { licenseKey: props.licenseKey || undefined, store: tlStore, shapeUtils: [...defaultShapeUtils, CardShapeUtil], components: {
+        return (_jsxs("div", { className: "dsh-bb-board", "data-buildboard-board": context.board, style: boardStyle, children: [_jsxs("div", { className: "dsh-bb-sync", "data-sync": context.sync, children: ["sync: ", context.sync] }), _jsx(Tldraw, { licenseKey: props.licenseKey || undefined, store: tlStore, inferDarkMode: true, shapeUtils: [...defaultShapeUtils, CardShapeUtil], components: {
                         MainMenu: () => (_jsx(BuildboardMainMenu, { mod: mod, researchLabel: researchLabel, implementLabel: implementLabel, prettifyLabel: prettifyLabel, onResearch: props.onResearch, onImplement: props.onImplement })),
                     }, onMount: (editor) => {
                         store.setEditor(editor);
@@ -59,7 +59,7 @@ export function BoardView(props) {
                                 // ignore
                             }
                         }
-                    } }), context.error ? (_jsx("p", { className: "dsh-bb-board-error", role: "status", children: context.error })) : null] }));
+                    } }), context.error ? (_jsx("p", { className: "dsh-bb-board-error", role: "status", children: context.error })) : Object.keys(tlStore.serialize("document") ?? {}).filter((id) => id.startsWith("shape:")).length === 0 ? (_jsx("p", { className: "dsh-bb-board-error", role: "status", children: "Board empty \u2014 run /canvas or draw shapes" })) : null] }));
     }
     const fallback = runtime.fallback;
     return (_jsx("div", { className: "dsh-bb-board", "data-buildboard-board": context.board, style: boardStyle, children: _jsxs("div", { className: "dsh-bb-fallback", style: { padding: 16 }, children: [_jsx("strong", { children: fallback?.title ?? context.board }), context.error ? _jsx("p", { role: "status", children: context.error }) : null, !context.error && !fallback ? (_jsx("p", { role: "status", children: "Loading canvas\u2026" })) : null, _jsx("ul", { children: Object.values(fallback?.records ?? {})

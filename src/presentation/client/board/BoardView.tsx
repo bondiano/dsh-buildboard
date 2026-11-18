@@ -85,6 +85,7 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 				<Tldraw
 					licenseKey={props.licenseKey || undefined}
 					store={tlStore}
+					inferDarkMode
 					shapeUtils={[...defaultShapeUtils, CardShapeUtil]}
 					components={{
 						MainMenu: () => (
@@ -115,6 +116,12 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 				{context.error ? (
 					<p className="dsh-bb-board-error" role="status">
 						{context.error}
+					</p>
+				) : Object.keys(tlStore.serialize("document") ?? {}).filter((id) =>
+						id.startsWith("shape:"),
+				  ).length === 0 ? (
+					<p className="dsh-bb-board-error" role="status">
+						Board empty — run /canvas or draw shapes
 					</p>
 				) : null}
 			</div>

@@ -4,10 +4,14 @@
 export const CONTRAST_AA_NORMAL = 4.5;
 export const CONTRAST_AA_LARGE = 3;
 export const CONTRAST_AA_UI = 3;
-/** Card chrome fallbacks mirrored from CardShape.tsx (CSS var fallbacks). */
+/**
+ * Card chrome fallbacks mirrored from CardShape.tsx (CSS var fallbacks).
+ * Prefer `--color-panel` over `--color-low`: on light tldraw, `--color-low` is
+ * almost the same as the page background, so cards vanish.
+ */
 export const CARD_CHROME = {
-    background: "#f1f2f3",
-    border: "rgba(15, 23, 42, 0.16)",
+    background: "#ffffff",
+    border: "rgba(15, 23, 42, 0.28)",
     title: "#1d1d1d",
     kind: "#4b5563",
     excerpt: "#1d1d1d",
