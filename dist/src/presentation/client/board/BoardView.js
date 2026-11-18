@@ -45,8 +45,9 @@ export function BoardView(props) {
         const { Tldraw, defaultShapeUtils } = mod;
         const researchLabel = props.researchLabel ?? "Research";
         const implementLabel = props.implementLabel ?? "Implement";
+        const prettifyLabel = props.prettifyLabel ?? "Prettify layout";
         return (_jsxs("div", { className: "dsh-bb-board", "data-buildboard-board": context.board, style: boardStyle, children: [_jsxs("div", { className: "dsh-bb-sync", "data-sync": context.sync, children: ["sync: ", context.sync] }), _jsx(Tldraw, { licenseKey: props.licenseKey || undefined, store: tlStore, shapeUtils: [...defaultShapeUtils, CardShapeUtil], components: {
-                        MainMenu: () => (_jsx(BuildboardMainMenu, { mod: mod, researchLabel: researchLabel, implementLabel: implementLabel, onResearch: props.onResearch, onImplement: props.onImplement })),
+                        MainMenu: () => (_jsx(BuildboardMainMenu, { mod: mod, researchLabel: researchLabel, implementLabel: implementLabel, prettifyLabel: prettifyLabel, onResearch: props.onResearch, onImplement: props.onImplement })),
                     }, onMount: (editor) => {
                         store.setEditor(editor);
                         const shapeCount = Object.keys(tlStore.serialize("document") ?? {}).filter((id) => id.startsWith("shape:")).length;

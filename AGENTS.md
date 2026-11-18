@@ -20,6 +20,7 @@ Heptabase-style spatial whiteboard (`@local/dsh-buildboard`) for DeepSeek Harnes
 - **Fail-closed auth:** Keep private HTTP routes gated behind `src/infrastructure/web-route-auth.ts`.
 - **No React.useEffect:** Client lifecycle belongs in XState machines + `useSyncExternalStore` actor stores. Enforced by `test/unit/no-use-effect.test.ts`.
 - **`/canvas` quality gates:** Arrows must bind both ends and touch target AABBs; colors (including card chrome fallbacks in `CARD_CHROME`) must meet WCAG AA; `board_validate` with recipe `architecture` enforces this. Illustrations go through `board_generate_image` (OpenAI Images 2.6: default `gpt-image-2.6-sunburst`). Key resolution: `OPENAI_API_KEY` env, else settings `openaiApiKey`; never invent keys.
+- **Prettify layout:** Burger menu → Prettify (and `board_layout` mode `prettify`) runs a Sugiyama-style flow layout (`src/domain/board-prettify.ts`) for tangled arrows — selection (≥2 shapes) or whole page. Inspired by [comfyui-prettifier](https://github.com/Teknix420/comfyui-prettifier) (MIT).
 - **Quality gates:** Zero warnings under `oxlint --deny-warnings .`, `oxfmt --check .`, `tsc --noEmit`, unit tests, and `tsdown` client build.
 
 ## Verification

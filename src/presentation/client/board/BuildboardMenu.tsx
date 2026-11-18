@@ -46,7 +46,9 @@ export function BuildboardMainMenu(
 					label={props.prettifyLabel}
 					readonlyOk
 					onSelect={() => {
-						applyBoardPrettify(editor);
+						applyBoardPrettify(
+							editor as unknown as Parameters<typeof applyBoardPrettify>[0],
+						);
 					}}
 				/>
 			</TldrawUiMenuGroup>

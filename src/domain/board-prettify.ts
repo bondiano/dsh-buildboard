@@ -194,7 +194,7 @@ function orderRanks(
 					.map((e) => order.get(forward ? e.from : e.to)!);
 				const bary =
 					links.length === 0
-						? order.get(id) ?? group.indexOf(id)
+						? (order.get(id) ?? group.indexOf(id))
 						: links.reduce((a, b) => a + b, 0) / links.length;
 				return { id, bary };
 			});

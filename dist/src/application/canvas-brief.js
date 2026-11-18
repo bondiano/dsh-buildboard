@@ -25,7 +25,7 @@ export function buildCanvasBrief(input) {
         "- When a diagram needs an illustration, call board_generate_image (gpt-image-2.6-sunburst by default) and place it on the board; embed the returned markdown in related cards.",
         "- If board_generate_image returns openai_api_key_missing, tell the user to set OPENAI_API_KEY or Buildboard settings openaiApiKey / openaiImageModel — do not invent a key.",
         '- A card titled "What changed in this session".',
-        "- Call board_layout when shapes overlap.",
+        "- Call board_layout (mode prettify) when shapes overlap or arrows tangle; users can also use burger → Prettify layout.",
         '- Before finishing, call board_validate with recipe "architecture" (use repair true if base fields are missing). Fix contrast, unbound arrows, and non-touching arrow ends, then stop.',
     ]
         .filter((line) => line !== undefined)

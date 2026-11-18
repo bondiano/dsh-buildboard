@@ -1,4 +1,5 @@
 import { projectAssetsDir } from "../../application/paths.js";
+import { applyPrettifyPlacements, prettifyBoardRecords, } from "../../domain/board-prettify.js";
 import { validateBoardRecords } from "../../domain/board-validate.js";
 import { createId, parseCardRef } from "../../domain/ids.js";
 import { IMAGE_SETUP_HINT, buildImageShapeRecords, generateOpenAIImage, normalizeImageModel, resolveImageAuth, writeGeneratedAsset, } from "../openai-images.js";
@@ -226,24 +227,50 @@ export function buildBuildboardTools(_ctx, services) {
         },
         {
             name: "board_layout",
-            description: "Simple grid layout for the given shape ids.",
+            description: 'Layout shapes: mode "prettify" (Sugiyama flow by arrows, default) or "grid". Omit ids to prettify the whole board.',
             parameters: {
                 type: "object",
-                required: ["ids"],
                 properties: {
                     board: { type: "string" },
                     ids: { type: "array", items: { type: "string" } },
+                    mode: {
+                        type: "string",
+                        enum: ["prettify", "grid"],
+                        description: "prettify = flow layout (default); grid = simple columns",
+                    },
                     columns: { type: "number" },
                     gap: { type: "number" },
+                    direction: { type: "string", enum: ["LR", "TB"] },
                 },
             },
             output: textOutput(),
             async execute(args, exec) {
                 const a = args;
                 const doc = await boardOf(exec, a.board);
+                const mode = a.mode ?? "prettify";
+                if (mode === "prettify") {
+                    const result = prettifyBoardRecords(doc.records, {
+                        onlyIds: a.ids && a.ids.length > 0 ? a.ids : undefined,
+                        direction: a.direction ?? "LR",
+                        rankGap: a.gap ?? 96,
+                        nodeGap: a.gap ?? 48,
+                    });
+                    const put = applyPrettifyPlacements(doc.records, result);
+                    const snap = services.boards.applyDiff(doc.id, {
+                        put,
+                        actor: "agent",
+                        clientTime: Date.now(),
+                    });
+                    return {
+                        mode,
+                        laidOut: put.length,
+                        revision: snap.revision,
+                    };
+                }
+                const ids = a.ids ?? [];
                 const columns = a.columns ?? 3;
                 const gap = a.gap ?? 40;
-                const put = a.ids.flatMap((id, index) => {
+                const put = ids.flatMap((id, index) => {
                     const prev = doc.records[id];
                     if (!prev)
                         return [];
@@ -262,7 +289,7 @@ export function buildBuildboardTools(_ctx, services) {
                     actor: "agent",
                     clientTime: Date.now(),
                 });
-                return { laidOut: put.length, revision: snap.revision };
+                return { mode, laidOut: put.length, revision: snap.revision };
             },
         },
         {

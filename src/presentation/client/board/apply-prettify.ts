@@ -4,44 +4,43 @@
  */
 import {
 	prettifyGraph,
-	type PrettifyNode,
 	type PrettifyEdge,
+	type PrettifyNode,
 	type PrettifyOptions,
 } from "../../../domain/board-prettify.js";
 
+/** Minimal shape fields read from the editor (tldraw TLShape is structural). */
+export interface PrettifyShape {
+	id: string;
+	type: string;
+	x: number;
+	y: number;
+	parentId: string;
+	props: object;
+}
+
 /** Minimal editor surface used by Prettify (avoids pulling full tldraw types). */
 export interface PrettifyEditor {
-	getSelectedShapeIds(): string[];
-	getCurrentPageShapes(): Array<{
-		id: string;
-		type: string;
-		x: number;
-		y: number;
-		parentId: string;
-		props: Record<string, unknown>;
-	}>;
-	updateShapes(
-		partials: Array<{ id: string; type: string; x: number; y: number }>,
-	): void;
+	getSelectedShapeIds(): readonly string[];
+	getCurrentPageShapes(): readonly PrettifyShape[];
+	updateShapes(partials: readonly object[]): void;
 	zoomToFit(opts?: { animation?: { duration: number } }): void;
 	markHistoryStoppingPoint?(name: string): void;
 }
 
-function shapeSize(shape: {
-	type: string;
-	props: Record<string, unknown>;
-}): { w: number; h: number } {
+function shapeSize(shape: PrettifyShape): { w: number; h: number } {
+	const props = shape.props as Record<string, unknown>;
 	const w =
-		typeof shape.props["w"] === "number"
-			? shape.props["w"]
+		typeof props["w"] === "number"
+			? props["w"]
 			: shape.type === "note"
 				? 200
 				: shape.type === "text"
 					? 160
 					: 200;
 	const h =
-		typeof shape.props["h"] === "number"
-			? shape.props["h"]
+		typeof props["h"] === "number"
+			? props["h"]
 			: shape.type === "note"
 				? 200
 				: shape.type === "text"
@@ -88,8 +87,9 @@ export function applyBoardPrettify(
 
 	for (const shape of shapes) {
 		if (shape.type !== "arrow") continue;
-		const from = bindingId(shape.props["start"]);
-		const to = bindingId(shape.props["end"]);
+		const props = shape.props as Record<string, unknown>;
+		const from = bindingId(props["start"]);
+		const to = bindingId(props["end"]);
 		if (!from || !to) continue;
 		if (scopeIds && (!scopeIds.has(from) || !scopeIds.has(to))) continue;
 		if (!byId.has(from) || !byId.has(to)) continue;
