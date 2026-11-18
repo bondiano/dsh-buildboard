@@ -2,6 +2,10 @@ import type { BoardRegistry } from "../../application/board-document.js";
 import type { CardLibrary } from "../../application/card-library.js";
 import { projectAssetsDir } from "../../application/paths.js";
 import type { RunService } from "../../application/run-service.js";
+import {
+	applyPrettifyPlacements,
+	prettifyBoardRecords,
+} from "../../domain/board-prettify.js";
 import { validateBoardRecords } from "../../domain/board-validate.js";
 import { createId, parseCardRef, type CardScope } from "../../domain/ids.js";
 import type {

@@ -12,6 +12,7 @@ export interface BoardViewProps {
 	visible?: boolean;
 	researchLabel?: string;
 	implementLabel?: string;
+	prettifyLabel?: string;
 	onResearch?: () => void;
 	onImplement?: () => void;
 }
@@ -71,6 +72,7 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 		const { Tldraw, defaultShapeUtils } = mod;
 		const researchLabel = props.researchLabel ?? "Research";
 		const implementLabel = props.implementLabel ?? "Implement";
+		const prettifyLabel = props.prettifyLabel ?? "Prettify layout";
 		return (
 			<div
 				className="dsh-bb-board"
@@ -90,6 +92,7 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 								mod={mod}
 								researchLabel={researchLabel}
 								implementLabel={implementLabel}
+								prettifyLabel={prettifyLabel}
 								onResearch={props.onResearch}
 								onImplement={props.onImplement}
 							/>

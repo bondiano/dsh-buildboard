@@ -1,14 +1,16 @@
 import * as React from "react";
+import { applyBoardPrettify } from "./apply-prettify.js";
 
 export interface BuildboardMenuProps {
 	mod: typeof import("tldraw");
 	researchLabel: string;
 	implementLabel: string;
+	prettifyLabel: string;
 	onResearch?: () => void;
 	onImplement?: () => void;
 }
 
-/** Research / Implement entries inside tldraw's hamburger MainMenu. */
+/** Research / Implement / Prettify entries inside tldraw's hamburger MainMenu. */
 export function BuildboardMainMenu(
 	props: BuildboardMenuProps,
 ): React.ReactElement {
@@ -17,7 +19,9 @@ export function BuildboardMainMenu(
 		DefaultMainMenuContent,
 		TldrawUiMenuGroup,
 		TldrawUiMenuItem,
+		useEditor,
 	} = props.mod;
+	const editor = useEditor();
 	return (
 		<DefaultMainMenu>
 			<TldrawUiMenuGroup id="buildboard-agent">
@@ -35,6 +39,14 @@ export function BuildboardMainMenu(
 					readonlyOk
 					onSelect={() => {
 						props.onImplement?.();
+					}}
+				/>
+				<TldrawUiMenuItem
+					id="buildboard-prettify"
+					label={props.prettifyLabel}
+					readonlyOk
+					onSelect={() => {
+						applyBoardPrettify(editor);
 					}}
 				/>
 			</TldrawUiMenuGroup>

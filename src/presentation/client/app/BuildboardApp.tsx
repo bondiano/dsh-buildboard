@@ -207,6 +207,11 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 						visible={props.visible}
 						researchLabel={label(props.t, "toolbar.research", "Research")}
 						implementLabel={label(props.t, "toolbar.implement", "Implement")}
+						prettifyLabel={label(
+							props.t,
+							"toolbar.prettify",
+							"Prettify layout",
+						)}
 						onResearch={() => {
 							void startRun("research");
 						}}
