@@ -75,15 +75,18 @@ export function apply(ctx: ClientContext): void {
 
 	const injectTab = buildboardTabInject(ctx as never);
 	ctx.slots.inject("sidebar.right.pane.tab", function* () {
-		yield ctx.slots.register(
-			{
-				name: "sidebar.right.pane.tab",
-				key: BUILDBOARD_TAB_ID,
-				locale: CLIENT_NAMESPACE,
-				inject: injectTab,
-			},
-			BuildboardTab,
-		);
+		// Hosts look up the body by tab id and/or kind — register both keys.
+		for (const key of [BUILDBOARD_TAB_ID, BUILDBOARD_TAB_KIND, BUNDLE_PACKAGE]) {
+			yield ctx.slots.register(
+				{
+					name: "sidebar.right.pane.tab",
+					key,
+					locale: CLIENT_NAMESPACE,
+					inject: injectTab,
+				},
+				BuildboardTab,
+			);
+		}
 	});
 
 	ctx.slots.inject("main", function* () {
@@ -95,7 +98,8 @@ export function apply(ctx: ClientContext): void {
 				inject: () => ({
 					configForms: ctx.configForms,
 					uiWorkspace: ctx.uiWorkspace,
-					layout: ctx.get?.("layout") ?? (ctx as { layout?: unknown }).layout,
+					// Cordis 4 throws on undeclared inject props — use get() only.
+					layout: ctx.get?.("layout"),
 				}),
 			},
 			BuildboardPanel,

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { SETTINGS_NAMESPACE } from "../../domain/settings-ns.js";
 import { BuildboardApp } from "./BuildboardApp.js";
+import { TabErrorBoundary } from "./TabErrorBoundary.js";
 
 export interface BuildboardTabProps {
 	sessionId?: string;
@@ -15,25 +16,45 @@ export interface BuildboardTabProps {
 			workspaceId?: string,
 			options?: { prompt?: string; whenDraftExists?: string },
 		): void;
+		getActiveSession?(): { id: string } | undefined;
 	};
 	layout?: { selectPanel(id: string | null): void };
 }
 
 export const BUILDBOARD_PANEL_ID = "buildboard";
 
+function readSettingsSnapshot(
+	settings: BuildboardTabProps["settings"],
+): { value?: Record<string, unknown> } | undefined {
+	if (!settings) return undefined;
+	try {
+		return settings.getSnapshot();
+	} catch {
+		return undefined;
+	}
+}
+
 export function BuildboardTab(props: BuildboardTabProps): React.ReactElement {
-	const visible = props.useTabInfo?.().tab?.visible !== false;
+	let visible = true;
+	try {
+		visible = props.useTabInfo?.().tab?.visible !== false;
+	} catch {
+		visible = true;
+	}
 	const [snapshot, setSnapshot] = React.useState(() =>
-		props.settings?.getSnapshot(),
+		readSettingsSnapshot(props.settings),
 	);
 
-	React.useEffect(
-		() =>
-			props.settings?.subscribe(() =>
-				setSnapshot(props.settings?.getSnapshot()),
-			),
-		[props.settings],
-	);
+	React.useEffect(() => {
+		if (!props.settings?.subscribe) return;
+		try {
+			return props.settings.subscribe(() =>
+				setSnapshot(readSettingsSnapshot(props.settings)),
+			);
+		} catch {
+			return undefined;
+		}
+	}, [props.settings]);
 
 	const licenseKey =
 		typeof snapshot?.value?.["tldrawLicenseKey"] === "string"
@@ -43,30 +64,38 @@ export function BuildboardTab(props: BuildboardTabProps): React.ReactElement {
 		typeof snapshot?.value?.["pollIntervalMs"] === "number"
 			? snapshot.value["pollIntervalMs"]
 			: 2000;
+	const sessionId =
+		props.sessionId ?? props.uiWorkspace?.getActiveSession?.()?.id;
 
 	return (
-		<BuildboardApp
-			sessionId={props.sessionId}
-			compact
-			visible={visible}
-			licenseKey={licenseKey}
-			pollIntervalMs={pollIntervalMs}
-			t={props.t}
-			onFullscreen={
-				props.layout
-					? () => props.layout?.selectPanel(BUILDBOARD_PANEL_ID)
-					: undefined
-			}
-			canStartSession={typeof props.uiWorkspace?.startSession === "function"}
-			onStartRun={(_kind, _board, prompt) => {
-				props.uiWorkspace?.startSession?.(undefined, {
-					prompt:
-						prompt ??
-						"Buildboard run. Use board_* and card_* tools, then run_report.",
-					whenDraftExists: "append",
-				});
-			}}
-		/>
+		<div className="dsh-bb-host" data-buildboard-tab-host="">
+			<TabErrorBoundary t={props.t}>
+				<BuildboardApp
+					sessionId={sessionId}
+					compact
+					visible={visible}
+					licenseKey={licenseKey}
+					pollIntervalMs={pollIntervalMs}
+					t={props.t}
+					onFullscreen={
+						props.layout
+							? () => props.layout?.selectPanel(BUILDBOARD_PANEL_ID)
+							: undefined
+					}
+					canStartSession={
+						typeof props.uiWorkspace?.startSession === "function"
+					}
+					onStartRun={(_kind, _board, prompt) => {
+						props.uiWorkspace?.startSession?.(undefined, {
+							prompt:
+								prompt ??
+								"Buildboard run. Use board_* and card_* tools, then run_report.",
+							whenDraftExists: "append",
+						});
+					}}
+				/>
+			</TabErrorBoundary>
+		</div>
 	);
 }
 
@@ -93,6 +122,7 @@ export function buildboardTabInject(ctx: {
 			)?.getActiveSession?.()?.id,
 		settings: form,
 		uiWorkspace: ctx.uiWorkspace,
-		layout: ctx.layout ?? (ctx.get?.("layout") as BuildboardTabProps["layout"]),
+		// Cordis 4 throws on undeclared inject props — never read ctx.layout directly.
+		layout: ctx.get?.("layout") as BuildboardTabProps["layout"],
 	});
 }

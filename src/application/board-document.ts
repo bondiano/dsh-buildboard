@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import { importJsonCanvas } from "../adapters/legacy-json-canvas.js";
 import {
 	applyBoardDiff,
+	normalizeBoardRecords,
 	type BoardDiff,
 	type BoardDocumentData,
 	type BoardRecord,
@@ -102,7 +103,7 @@ export class BoardRegistry {
 			id: createId("board"),
 			slug,
 			title: input.title,
-			records: input.records ?? emptyPageRecords(),
+			records: normalizeBoardRecords(input.records ?? emptyPageRecords()),
 			revision: 1,
 			createdAt: now,
 			updatedAt: now,
@@ -164,6 +165,7 @@ export class BoardRegistry {
 				);
 				const board = JSON.parse(raw) as BoardDocumentData;
 				if (!board.id || !board.slug) continue;
+				board.records = normalizeBoardRecords(board.records ?? {});
 				this.#boards.set(board.id, board);
 				this.#bySlug.set(board.slug, board.id);
 			} catch (error) {

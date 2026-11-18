@@ -46,3 +46,8 @@ export function sessionScratchWorkspace(
 ): string {
 	return join(globalRoot(dshHome), "sessions", sessionId);
 }
+
+/** Durable sessionId → project cwd map (survives host restarts). */
+export function sessionWorkspaceMapPath(dshHome: string): string {
+	return join(globalRoot(dshHome), "session-workspaces.json");
+}

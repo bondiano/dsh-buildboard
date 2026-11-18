@@ -33,3 +33,7 @@ export function globalCardPath(dshHome, id) {
 export function sessionScratchWorkspace(dshHome, sessionId) {
     return join(globalRoot(dshHome), "sessions", sessionId);
 }
+/** Durable sessionId → project cwd map (survives host restarts). */
+export function sessionWorkspaceMapPath(dshHome) {
+    return join(globalRoot(dshHome), "session-workspaces.json");
+}

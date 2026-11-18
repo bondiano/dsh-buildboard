@@ -20,6 +20,7 @@ export default defineConfig({
     clean: false,
     dts: false,
     deps: {
+        // Host ModuleLoader provides these; bundling a second react-dom breaks hooks.
         neverBundle: ["react", "react-dom", "react/jsx-runtime"],
         alwaysBundle: [
             "tldraw",

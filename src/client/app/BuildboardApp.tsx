@@ -66,68 +66,34 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 	const [workspace, setWorkspace] = React.useState<string | null | undefined>(
 		undefined,
 	);
-	const [ensuring, setEnsuring] = React.useState(false);
 	const [ensureError, setEnsureError] = React.useState<string | null>(null);
 
 	const sessionQuery = props.sessionId
 		? `session=${encodeURIComponent(props.sessionId)}`
 		: "";
 
-	React.useEffect(() => {
-		if (props.visible === false) return;
-		let cancelled = false;
-		async function refresh(): Promise<void> {
-			try {
-				const [metaRes, bRes, cRes, rRes] = await Promise.all([
-					fetch(`${BUILDBOARD_API_ROUTE}/meta?${sessionQuery}`),
-					fetch(`${BUILDBOARD_API_ROUTE}/boards?${sessionQuery}`),
-					fetch(`${BUILDBOARD_API_ROUTE}/cards?${sessionQuery}`),
-					fetch(`${BUILDBOARD_API_ROUTE}/runs`),
-				]);
-				if (cancelled) return;
-				const meta = (await metaRes.json()) as {
-					workspace?: string | null;
-					error?: string;
-					message?: string;
-				};
-				if (metaRes.status === 409 || meta.error === WORKSPACE_REQUIRED) {
-					setWorkspace(null);
-					setBoards([]);
-					setCards([]);
-					setRuns([]);
-					return;
-				}
-				setWorkspace(
-					typeof meta.workspace === "string" ? meta.workspace : null,
-				);
-				const b = (await bRes.json()) as {
-					boards?: BoardSummary[];
-					workspace?: string | null;
-				};
-				const c = (await cRes.json()) as { cards?: CardSummary[] };
-				const r = (await rRes.json()) as { runs?: RunSummary[] };
-				if (typeof b.workspace === "string") setWorkspace(b.workspace);
-				else if (b.workspace === null) setWorkspace(null);
-				setBoards(b.boards ?? []);
-				setCards(c.cards ?? []);
-				setRuns(r.runs ?? []);
-			} catch {
-				// host may be temporarily unavailable
-			}
-		}
-		void refresh();
-		const timer = setInterval(
-			() => void refresh(),
-			props.pollIntervalMs ?? 2000,
-		);
-		return () => {
-			cancelled = true;
-			clearInterval(timer);
-		};
-	}, [props.sessionId, props.visible, props.pollIntervalMs, sessionQuery]);
+	const applyWorkspacePayload = React.useCallback(
+		(body: {
+			workspace?: string | null;
+			boards?: BoardSummary[];
+			cards?: CardSummary[];
+			runs?: RunSummary[];
+		}) => {
+			setWorkspace(
+				typeof body.workspace === "string"
+					? body.workspace
+					: body.workspace === null
+						? null
+						: undefined,
+			);
+			if (body.boards) setBoards(body.boards);
+			if (body.cards) setCards(body.cards);
+			if (body.runs) setRuns(body.runs);
+		},
+		[],
+	);
 
-	const createLocalBoard = async (): Promise<void> => {
-		setEnsuring(true);
+	const ensureLocalWorkspace = React.useCallback(async (): Promise<boolean> => {
 		setEnsureError(null);
 		try {
 			const response = await fetch(
@@ -141,17 +107,83 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 			};
 			if (!response.ok) {
 				setEnsureError(body.message ?? `HTTP ${response.status}`);
-				return;
+				setWorkspace(null);
+				return false;
 			}
-			setWorkspace(body.workspace ?? null);
-			setBoards(body.boards ?? []);
+			applyWorkspacePayload(body);
 			setBoard("main");
+			return true;
 		} catch (error) {
 			setEnsureError(String(error));
-		} finally {
-			setEnsuring(false);
+			setWorkspace(null);
+			return false;
 		}
-	};
+	}, [applyWorkspacePayload, sessionQuery]);
+
+	React.useEffect(() => {
+		if (props.visible === false) return;
+		let cancelled = false;
+		async function refresh(): Promise<void> {
+			try {
+				const metaRes = await fetch(
+					`${BUILDBOARD_API_ROUTE}/meta?${sessionQuery}`,
+				);
+				if (cancelled) return;
+				const meta = (await metaRes.json()) as {
+					workspace?: string | null;
+					error?: string;
+				};
+				const missingWorkspace =
+					metaRes.status === 409 ||
+					meta.error === WORKSPACE_REQUIRED ||
+					meta.workspace == null;
+				if (missingWorkspace) {
+					const ok = await ensureLocalWorkspace();
+					if (cancelled || !ok) return;
+				} else {
+					setWorkspace(
+						typeof meta.workspace === "string" ? meta.workspace : null,
+					);
+				}
+				const [bRes, cRes, rRes] = await Promise.all([
+					fetch(`${BUILDBOARD_API_ROUTE}/boards?${sessionQuery}`),
+					fetch(`${BUILDBOARD_API_ROUTE}/cards?${sessionQuery}`),
+					fetch(`${BUILDBOARD_API_ROUTE}/runs`),
+				]);
+				if (cancelled) return;
+				const b = (await bRes.json()) as {
+					boards?: BoardSummary[];
+					workspace?: string | null;
+				};
+				const c = (await cRes.json()) as { cards?: CardSummary[] };
+				const r = (await rRes.json()) as { runs?: RunSummary[] };
+				applyWorkspacePayload({
+					workspace: b.workspace ?? meta.workspace,
+					boards: b.boards ?? [],
+					cards: c.cards ?? [],
+					runs: r.runs ?? [],
+				});
+			} catch {
+				// host may be temporarily unavailable
+			}
+		}
+		void refresh();
+		const timer = setInterval(
+			() => void refresh(),
+			props.pollIntervalMs ?? 2000,
+		);
+		return () => {
+			cancelled = true;
+			clearInterval(timer);
+		};
+	}, [
+		props.sessionId,
+		props.visible,
+		props.pollIntervalMs,
+		sessionQuery,
+		ensureLocalWorkspace,
+		applyWorkspacePayload,
+	]);
 
 	React.useEffect(() => {
 		if (!selectedCard) {
@@ -180,6 +212,22 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 		};
 	}, [selectedCard, sessionQuery]);
 
+	React.useEffect(() => {
+		if (boards.length === 0) return;
+		const preferred =
+			[...boards].sort((a, b) => b.updatedAt - a.updatedAt).find((item) =>
+				item.slug.startsWith("session-"),
+			) ??
+			[...boards].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+		if (!preferred) return;
+		setBoard((current) => {
+			if (boards.some((item) => item.slug === current) && current !== "main") {
+				return current;
+			}
+			return preferred.slug;
+		});
+	}, [boards]);
+
 	const startRun = async (kind: "research" | "implement"): Promise<void> => {
 		const brief = `Buildboard ${kind} on board ${board}. Use board_* and card_* tools, then run_report.`;
 		try {
@@ -202,37 +250,46 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 		}
 	};
 
+	const rootStyle: React.CSSProperties = {
+		display: "flex",
+		flexDirection: "column",
+		position: "absolute",
+		inset: 0,
+		width: "100%",
+		height: "100%",
+		minHeight: 240,
+		boxSizing: "border-box",
+		background: "#111",
+		color: "#eee",
+	};
+
 	if (workspace === null) {
 		return (
-			<div className="dsh-bb-root" data-buildboard-app="" data-empty="workspace">
-				<div className="dsh-bb-empty" role="status">
+			<div
+				className="dsh-bb-root"
+				data-buildboard-app=""
+				data-empty="workspace"
+				style={rootStyle}
+			>
+				<div className="dsh-bb-empty" role="status" style={{ padding: 16 }}>
 					<strong>
-						{label(
-							props.t,
-							"empty.noWorkspace",
-							"У сессии нет workspace — доску сохранить некуда.",
-						)}
+						{ensureError
+							? label(
+									props.t,
+									"empty.noWorkspace",
+									"У сессии нет workspace — доску сохранить некуда.",
+								)
+							: label(props.t, "empty.creating", "Создаём локальную доску…")}
 					</strong>
-					<p>
-						{label(
-							props.t,
-							"empty.hint",
-							"Открой сессию из проекта слева, или создай локальную доску для этой сессии.",
-						)}
-					</p>
-					<button
-						type="button"
-						disabled={ensuring}
-						onClick={() => void createLocalBoard()}
-					>
-						{ensuring
-							? label(props.t, "empty.creating", "Создаём…")
-							: label(props.t, "empty.createLocal", "Создать локальную доску")}
-					</button>
 					{ensureError ? (
-						<p className="dsh-bb-empty-error" role="alert">
-							{ensureError}
-						</p>
+						<>
+							<p className="dsh-bb-empty-error" role="alert">
+								{ensureError}
+							</p>
+							<button type="button" onClick={() => void ensureLocalWorkspace()}>
+								{label(props.t, "empty.createLocal", "Создать локальную доску")}
+							</button>
+						</>
 					) : null}
 				</div>
 			</div>
@@ -240,27 +297,7 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 	}
 
 	return (
-		<div className="dsh-bb-root" data-buildboard-app="">
-			<p className="dsh-bb-help" role="note">
-				{label(
-					props.t,
-					"help.howto",
-					"Рисуйте на холсте (tldraw). Research/Implement стартуют агента. В чате: /canvas — собрать доску по сессии.",
-				)}
-			</p>
-			<div className="dsh-bb-toolbar">
-				<button type="button" onClick={() => void startRun("research")}>
-					{label(props.t, "toolbar.research", "Research")}
-				</button>
-				<button type="button" onClick={() => void startRun("implement")}>
-					{label(props.t, "toolbar.implement", "Implement")}
-				</button>
-				{props.onFullscreen ? (
-					<button type="button" onClick={props.onFullscreen}>
-						{label(props.t, "toolbar.fullscreen", "Fullscreen")}
-					</button>
-				) : null}
-			</div>
+		<div className="dsh-bb-root" data-buildboard-app="" style={rootStyle}>
 			<div className={`dsh-bb-shell${props.compact ? " is-compact" : ""}`}>
 				{props.compact ? null : (
 					<aside className="dsh-bb-side">
@@ -301,7 +338,11 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 					</aside>
 				)}
 				{workspace === undefined ? (
-					<div className="dsh-bb-board dsh-bb-fallback" role="status">
+					<div
+						className="dsh-bb-board dsh-bb-fallback"
+						role="status"
+						style={{ padding: 16, color: "#eee" }}
+					>
 						{label(props.t, "empty.loading", "Загрузка доски…")}
 					</div>
 				) : (
@@ -311,6 +352,18 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 						licenseKey={props.licenseKey}
 						pollIntervalMs={props.pollIntervalMs}
 						visible={props.visible}
+						researchLabel={label(props.t, "toolbar.research", "Research")}
+						implementLabel={label(
+							props.t,
+							"toolbar.implement",
+							"Implement",
+						)}
+						onResearch={() => {
+							void startRun("research");
+						}}
+						onImplement={() => {
+							void startRun("implement");
+						}}
 					/>
 				)}
 				{props.compact ? null : (

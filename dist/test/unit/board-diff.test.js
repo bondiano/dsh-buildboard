@@ -14,6 +14,9 @@ test("applyBoardDiff put and remove with actor stamp", () => {
     const created = records["shape:1"];
     assert.ok(created);
     assert.equal(created.type, "note");
+    assert.equal(created.rotation, 0);
+    assert.equal(created.opacity, 1);
+    assert.equal(created.isLocked, false);
     assert.equal(created.meta.updatedBy, "agent");
     applyBoardDiff(records, { remove: ["shape:1"] });
     assert.equal(records["shape:1"], undefined);

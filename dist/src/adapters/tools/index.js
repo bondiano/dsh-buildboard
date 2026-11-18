@@ -97,6 +97,9 @@ export function buildBuildboardTools(_ctx, services) {
                     type: a.type,
                     x: a.x ?? 0,
                     y: a.y ?? 0,
+                    rotation: 0,
+                    opacity: 1,
+                    isLocked: false,
                     props: a.props ?? {},
                     parentId: "page:page",
                     index: "a1",
@@ -188,6 +191,9 @@ export function buildBuildboardTools(_ctx, services) {
                     type: "arrow",
                     x: 0,
                     y: 0,
+                    rotation: 0,
+                    opacity: 1,
+                    isLocked: false,
                     props: {
                         start: {
                             type: "binding",

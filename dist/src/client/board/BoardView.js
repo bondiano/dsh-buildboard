@@ -2,6 +2,7 @@ import { jsxs as _jsxs, jsx as _jsx } from "react/jsx-runtime";
 import * as React from "react";
 import { BUILDBOARD_API_ROUTE, WORKSPACE_REQUIRED, WORKSPACE_REQUIRED_HINT, } from "../../domain/route.js";
 import { nextSyncStatus, } from "../../domain/machines/board-sync.machine.js";
+import { BuildboardMainMenu } from "./BuildboardMenu.js";
 import { CardShapeUtil } from "./CardShape.js";
 function syncUrl(sessionId, board) {
     const params = new URLSearchParams();
@@ -9,6 +10,44 @@ function syncUrl(sessionId, board) {
         params.set("session", sessionId);
     params.set("board", board);
     return `${BUILDBOARD_API_ROUTE}/state?${params.toString()}`;
+}
+/** Client-side guard: incomplete agent shapes must not hit tldraw validation. */
+function normalizeClientShape(record) {
+    if (record.typeName !== "shape")
+        return record;
+    const props = typeof record.props === "object" && record.props !== null
+        ? { ...record.props }
+        : {};
+    if (record.type === "card") {
+        if (typeof props.w !== "number")
+            props.w = 260;
+        if (typeof props.h !== "number")
+            props.h = 160;
+        if (typeof props.title !== "string")
+            props.title = "Card";
+        if (typeof props.excerpt !== "string")
+            props.excerpt = "";
+        if (typeof props.kind !== "string")
+            props.kind = "note";
+        if (typeof props.cardRef !== "string")
+            props.cardRef = "";
+        if (typeof props.runStatus !== "string")
+            props.runStatus = "";
+    }
+    return {
+        ...record,
+        x: typeof record.x === "number" ? record.x : 0,
+        y: typeof record.y === "number" ? record.y : 0,
+        rotation: typeof record.rotation === "number" ? record.rotation : 0,
+        opacity: typeof record.opacity === "number" ? record.opacity : 1,
+        isLocked: typeof record.isLocked === "boolean" ? record.isLocked : false,
+        parentId: typeof record.parentId === "string" ? record.parentId : "page:page",
+        index: typeof record.index === "string" ? record.index : "a1",
+        meta: typeof record.meta === "object" && record.meta !== null
+            ? record.meta
+            : {},
+        props,
+    };
 }
 function ensureTldrawCss() {
     if (typeof document === "undefined")
@@ -39,6 +78,15 @@ export function BoardView(props) {
     const dirtyRef = React.useRef(false);
     const syncRef = React.useRef("idle");
     const storeRef = React.useRef(null);
+    const editorRef = React.useRef(null);
+    React.useEffect(() => {
+        revisionRef.current = 0;
+        dirtyRef.current = false;
+        setFallback(null);
+        setError(null);
+        setSync("idle");
+        syncRef.current = "idle";
+    }, [props.sessionId, board]);
     const setSyncStatus = React.useCallback((event) => {
         try {
             const next = nextSyncStatus(syncRef.current, event);
@@ -122,15 +170,28 @@ export function BoardView(props) {
                             if (!nextIds.has(id))
                                 store.remove([id]);
                         }
-                        const put = Object.values(body.records).filter((record) => record &&
+                        const put = Object.values(body.records)
+                            .filter((record) => record &&
                             typeof record === "object" &&
-                            typeof record.id === "string");
+                            typeof record.id === "string")
+                            .map(normalizeClientShape);
                         if (put.length > 0)
                             store.put(put);
                     });
                 }
                 finally {
                     applyingRemote.current = false;
+                }
+                const shapeCount = Object.values(body.records).filter((record) => record?.typeName === "shape").length;
+                if (shapeCount > 0) {
+                    try {
+                        editorRef.current?.zoomToFit?.({
+                            animation: { duration: 200 },
+                        });
+                    }
+                    catch {
+                        // editor may not be mounted yet
+                    }
                 }
                 setSyncStatus("OK");
             }
@@ -225,11 +286,35 @@ export function BoardView(props) {
                 clearTimeout(timer);
         };
     }, [props.sessionId, board, mod, setSyncStatus]);
+    const boardStyle = {
+        position: "relative",
+        flex: 1,
+        minHeight: 240,
+        width: "100%",
+        height: "100%",
+        background: "#111",
+        color: "#eee",
+    };
     if (mod && storeRef.current) {
         const { Tldraw, defaultShapeUtils } = mod;
-        return (_jsxs("div", { className: "dsh-bb-board", "data-buildboard-board": board, children: [_jsxs("div", { className: "dsh-bb-sync", "data-sync": sync, children: ["sync: ", sync] }), _jsx(Tldraw, { licenseKey: props.licenseKey || undefined, store: storeRef.current, shapeUtils: [...defaultShapeUtils, CardShapeUtil] }), error ? (_jsx("p", { className: "dsh-bb-board-error", role: "status", children: error })) : null] }));
+        const researchLabel = props.researchLabel ?? "Research";
+        const implementLabel = props.implementLabel ?? "Implement";
+        return (_jsxs("div", { className: "dsh-bb-board", "data-buildboard-board": board, style: boardStyle, children: [_jsxs("div", { className: "dsh-bb-sync", "data-sync": sync, children: ["sync: ", sync] }), _jsx(Tldraw, { licenseKey: props.licenseKey || undefined, store: storeRef.current, shapeUtils: [...defaultShapeUtils, CardShapeUtil], components: {
+                        MainMenu: () => (_jsx(BuildboardMainMenu, { mod: mod, researchLabel: researchLabel, implementLabel: implementLabel, onResearch: props.onResearch, onImplement: props.onImplement })),
+                    }, onMount: (editor) => {
+                        editorRef.current = editor;
+                        const shapeCount = Object.keys(storeRef.current?.serialize("document") ?? {}).filter((id) => id.startsWith("shape:")).length;
+                        if (shapeCount > 0) {
+                            try {
+                                editor.zoomToFit({ animation: { duration: 0 } });
+                            }
+                            catch {
+                                // ignore
+                            }
+                        }
+                    } }), error ? (_jsx("p", { className: "dsh-bb-board-error", role: "status", children: error })) : null] }));
     }
-    return (_jsx("div", { className: "dsh-bb-board", "data-buildboard-board": board, children: _jsxs("div", { className: "dsh-bb-fallback", children: [_jsx("strong", { children: fallback?.title ?? board }), error ? _jsx("p", { role: "status", children: error }) : null, _jsx("ul", { children: Object.values(fallback?.records ?? {})
+    return (_jsx("div", { className: "dsh-bb-board", "data-buildboard-board": board, style: boardStyle, children: _jsxs("div", { className: "dsh-bb-fallback", style: { padding: 16 }, children: [_jsx("strong", { children: fallback?.title ?? board }), error ? _jsx("p", { role: "status", children: error }) : null, !error && !fallback ? (_jsx("p", { role: "status", children: "Loading canvas\u2026" })) : null, _jsx("ul", { children: Object.values(fallback?.records ?? {})
                         .filter((r) => r.typeName === "shape")
                         .slice(0, 40)
                         .map((record) => (_jsxs("li", { children: [typeof record.type === "string" ? record.type : "shape", " \u00B7", " ", typeof record.id === "string" ? record.id : "?", record.meta

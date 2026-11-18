@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { importJsonCanvas } from "../adapters/legacy-json-canvas.js";
-import { applyBoardDiff, } from "../domain/board.js";
+import { applyBoardDiff, normalizeBoardRecords, } from "../domain/board.js";
 import { createId, slugify } from "../domain/ids.js";
 import { LEGACY_CANVAS_FILE, WORKSPACE_REQUIRED_MESSAGE, } from "../domain/route.js";
 import { projectBoardPath, projectBoardsDir } from "./paths.js";
@@ -77,7 +77,7 @@ export class BoardRegistry {
             id: createId("board"),
             slug,
             title: input.title,
-            records: input.records ?? emptyPageRecords(),
+            records: normalizeBoardRecords(input.records ?? emptyPageRecords()),
             revision: 1,
             createdAt: now,
             updatedAt: now,
@@ -136,6 +136,7 @@ export class BoardRegistry {
                 const board = JSON.parse(raw);
                 if (!board.id || !board.slug)
                     continue;
+                board.records = normalizeBoardRecords(board.records ?? {});
                 this.#boards.set(board.id, board);
                 this.#bySlug.set(board.slug, board.id);
             }

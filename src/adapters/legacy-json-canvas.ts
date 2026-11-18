@@ -1,4 +1,7 @@
-import type { BoardRecord } from "../domain/board.js";
+import {
+	normalizeBoardRecords,
+	type BoardRecord,
+} from "../domain/board.js";
 import { createId } from "../domain/ids.js";
 
 /** Minimal JSON Canvas 1.0 shapes we import from cult-canvas.canvas. */
@@ -69,7 +72,7 @@ export function importJsonCanvas(raw: unknown): Record<string, BoardRecord> {
 					title: text.slice(0, 80) || type,
 					excerpt: text.slice(0, 160),
 					kind: "note",
-					cardRef: null,
+					cardRef: "",
 				},
 				parentId: pageId,
 				index: "a1",
@@ -144,7 +147,7 @@ export function importJsonCanvas(raw: unknown): Record<string, BoardRecord> {
 		};
 	}
 
-	return records;
+	return normalizeBoardRecords(records);
 }
 
 function isPipelineKind(type: string): boolean {

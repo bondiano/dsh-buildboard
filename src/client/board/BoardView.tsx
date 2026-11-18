@@ -8,6 +8,7 @@ import {
 	nextSyncStatus,
 	type SyncStatus,
 } from "../../domain/machines/board-sync.machine.js";
+import { BuildboardMainMenu } from "./BuildboardMenu.js";
 import { CardShapeUtil } from "./CardShape.js";
 
 export interface BoardViewProps {
@@ -16,6 +17,10 @@ export interface BoardViewProps {
 	licenseKey?: string;
 	pollIntervalMs?: number;
 	visible?: boolean;
+	researchLabel?: string;
+	implementLabel?: string;
+	onResearch?: () => void;
+	onImplement?: () => void;
 }
 
 interface BoardSnapshot {
@@ -33,6 +38,42 @@ function syncUrl(sessionId: string | undefined, board: string): string {
 	if (sessionId) params.set("session", sessionId);
 	params.set("board", board);
 	return `${BUILDBOARD_API_ROUTE}/state?${params.toString()}`;
+}
+
+/** Client-side guard: incomplete agent shapes must not hit tldraw validation. */
+function normalizeClientShape(
+	record: Record<string, unknown>,
+): Record<string, unknown> {
+	if (record.typeName !== "shape") return record;
+	const props =
+		typeof record.props === "object" && record.props !== null
+			? { ...(record.props as Record<string, unknown>) }
+			: {};
+	if (record.type === "card") {
+		if (typeof props.w !== "number") props.w = 260;
+		if (typeof props.h !== "number") props.h = 160;
+		if (typeof props.title !== "string") props.title = "Card";
+		if (typeof props.excerpt !== "string") props.excerpt = "";
+		if (typeof props.kind !== "string") props.kind = "note";
+		if (typeof props.cardRef !== "string") props.cardRef = "";
+		if (typeof props.runStatus !== "string") props.runStatus = "";
+	}
+	return {
+		...record,
+		x: typeof record.x === "number" ? record.x : 0,
+		y: typeof record.y === "number" ? record.y : 0,
+		rotation: typeof record.rotation === "number" ? record.rotation : 0,
+		opacity: typeof record.opacity === "number" ? record.opacity : 1,
+		isLocked: typeof record.isLocked === "boolean" ? record.isLocked : false,
+		parentId:
+			typeof record.parentId === "string" ? record.parentId : "page:page",
+		index: typeof record.index === "string" ? record.index : "a1",
+		meta:
+			typeof record.meta === "object" && record.meta !== null
+				? record.meta
+				: {},
+		props,
+	};
 }
 
 function ensureTldrawCss(): void {
@@ -65,6 +106,18 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 	const storeRef = React.useRef<ReturnType<
 		TldrawModule["createTLStore"]
 	> | null>(null);
+	const editorRef = React.useRef<{
+		zoomToFit?(opts?: { animation?: { duration: number } }): void;
+	} | null>(null);
+
+	React.useEffect(() => {
+		revisionRef.current = 0;
+		dirtyRef.current = false;
+		setFallback(null);
+		setError(null);
+		setSync("idle");
+		syncRef.current = "idle";
+	}, [props.sessionId, board]);
 
 	const setSyncStatus = React.useCallback(
 		(event: Parameters<typeof nextSyncStatus>[1]) => {
@@ -154,16 +207,30 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 						for (const id of existing) {
 							if (!nextIds.has(id)) store.remove([id as never]);
 						}
-						const put = Object.values(body.records).filter(
-							(record) =>
-								record &&
-								typeof record === "object" &&
-								typeof record.id === "string",
-						);
+						const put = Object.values(body.records)
+							.filter(
+								(record) =>
+									record &&
+									typeof record === "object" &&
+									typeof record.id === "string",
+							)
+							.map(normalizeClientShape);
 						if (put.length > 0) store.put(put as never[]);
 					});
 				} finally {
 					applyingRemote.current = false;
+				}
+				const shapeCount = Object.values(body.records).filter(
+					(record) => record?.typeName === "shape",
+				).length;
+				if (shapeCount > 0) {
+					try {
+						editorRef.current?.zoomToFit?.({
+							animation: { duration: 200 },
+						});
+					} catch {
+						// editor may not be mounted yet
+					}
 				}
 				setSyncStatus("OK");
 			} catch (err) {
@@ -260,10 +327,26 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 		};
 	}, [props.sessionId, board, mod, setSyncStatus]);
 
+	const boardStyle: React.CSSProperties = {
+		position: "relative",
+		flex: 1,
+		minHeight: 240,
+		width: "100%",
+		height: "100%",
+		background: "#111",
+		color: "#eee",
+	};
+
 	if (mod && storeRef.current) {
 		const { Tldraw, defaultShapeUtils } = mod;
+		const researchLabel = props.researchLabel ?? "Research";
+		const implementLabel = props.implementLabel ?? "Implement";
 		return (
-			<div className="dsh-bb-board" data-buildboard-board={board}>
+			<div
+				className="dsh-bb-board"
+				data-buildboard-board={board}
+				style={boardStyle}
+			>
 				<div className="dsh-bb-sync" data-sync={sync}>
 					sync: {sync}
 				</div>
@@ -271,6 +354,30 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 					licenseKey={props.licenseKey || undefined}
 					store={storeRef.current}
 					shapeUtils={[...defaultShapeUtils, CardShapeUtil]}
+					components={{
+						MainMenu: () => (
+							<BuildboardMainMenu
+								mod={mod}
+								researchLabel={researchLabel}
+								implementLabel={implementLabel}
+								onResearch={props.onResearch}
+								onImplement={props.onImplement}
+							/>
+						),
+					}}
+					onMount={(editor) => {
+						editorRef.current = editor;
+						const shapeCount = Object.keys(
+							storeRef.current?.serialize("document") ?? {},
+						).filter((id) => id.startsWith("shape:")).length;
+						if (shapeCount > 0) {
+							try {
+								editor.zoomToFit({ animation: { duration: 0 } });
+							} catch {
+								// ignore
+							}
+						}
+					}}
 				/>
 				{error ? (
 					<p className="dsh-bb-board-error" role="status">
@@ -282,10 +389,17 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 	}
 
 	return (
-		<div className="dsh-bb-board" data-buildboard-board={board}>
-			<div className="dsh-bb-fallback">
+		<div
+			className="dsh-bb-board"
+			data-buildboard-board={board}
+			style={boardStyle}
+		>
+			<div className="dsh-bb-fallback" style={{ padding: 16 }}>
 				<strong>{fallback?.title ?? board}</strong>
 				{error ? <p role="status">{error}</p> : null}
+				{!error && !fallback ? (
+					<p role="status">Loading canvas…</p>
+				) : null}
 				<ul>
 					{Object.values(fallback?.records ?? {})
 						.filter((r) => r.typeName === "shape")

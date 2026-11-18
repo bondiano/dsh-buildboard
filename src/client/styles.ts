@@ -2,10 +2,22 @@ export const BUILDBOARD_STYLES = `
 .dsh-bb-root {
 	display: flex;
 	flex-direction: column;
+	position: absolute;
+	inset: 0;
+	width: 100%;
 	height: 100%;
 	min-height: 240px;
+	box-sizing: border-box;
 	background: var(--dsw-alias-bg-primary, #111);
 	color: var(--dsw-alias-text-primary, #eee);
+}
+.dsh-bb-host {
+	position: relative;
+	flex: 1 1 auto;
+	width: 100%;
+	height: 100%;
+	min-height: 240px;
+	overflow: hidden;
 }
 .dsh-bb-empty {
 	display: flex;
@@ -69,34 +81,6 @@ export const BUILDBOARD_STYLES = `
 .dsh-bb-board .tl-container {
 	position: absolute;
 	inset: 0;
-}
-.dsh-bb-help {
-	margin: 0;
-	padding: 8px 10px;
-	font-size: 12px;
-	line-height: 1.4;
-	opacity: 0.8;
-	border-bottom: 1px solid var(--dsw-alias-stroke-primary, #333);
-}
-.dsh-bb-toolbar {
-	display: flex;
-	gap: 6px;
-	padding: 6px 8px;
-	border-bottom: 1px solid var(--dsw-alias-stroke-primary, #333);
-	flex-wrap: wrap;
-}
-.dsh-bb-toolbar button {
-	appearance: none;
-	border: 1px solid var(--dsw-alias-stroke-primary, #444);
-	background: var(--dsw-alias-bg-secondary, #1a1a1a);
-	color: inherit;
-	border-radius: 6px;
-	padding: 4px 10px;
-	cursor: pointer;
-	font-size: 12px;
-}
-.dsh-bb-toolbar button:hover {
-	border-color: var(--dsw-alias-state-info-primary, #3b82f6);
 }
 .dsh-bb-list-item {
 	padding: 6px 8px;

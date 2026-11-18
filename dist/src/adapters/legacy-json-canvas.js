@@ -1,3 +1,4 @@
+import { normalizeBoardRecords, } from "../domain/board.js";
 import { createId } from "../domain/ids.js";
 function asString(value, fallback = "") {
     return typeof value === "string" ? value : fallback;
@@ -58,7 +59,7 @@ export function importJsonCanvas(raw) {
                     title: text.slice(0, 80) || type,
                     excerpt: text.slice(0, 160),
                     kind: "note",
-                    cardRef: null,
+                    cardRef: "",
                 },
                 parentId: pageId,
                 index: "a1",
@@ -132,7 +133,7 @@ export function importJsonCanvas(raw) {
             meta: { legacyId: edge["id"] },
         };
     }
-    return records;
+    return normalizeBoardRecords(records);
 }
 function isPipelineKind(type) {
     return [

@@ -1,13 +1,14 @@
-import { mkdir } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { buildBuildboardTools } from "../adapters/tools/index.js";
 import { BoardRegistry } from "../application/board-document.js";
 import { buildCanvasBrief, DEFAULT_CANVAS_REQUEST, } from "../application/canvas-brief.js";
 import { CardLibrary } from "../application/card-library.js";
-import { sessionScratchWorkspace } from "../application/paths.js";
+import { sessionScratchWorkspace, sessionWorkspaceMapPath, } from "../application/paths.js";
 import { RunService } from "../application/run-service.js";
-import { BUILDBOARD_API_ROUTE, WORKSPACE_REQUIRED_HINT, } from "../domain/route.js";
+import { BUILDBOARD_API_ROUTE } from "../domain/route.js";
 import { slugify } from "../domain/ids.js";
 import { authenticatedWebServer } from "../infrastructure/web-route-auth.js";
 import { Config, DEFAULT_SETTINGS, resolveSettings, SETTINGS_NAMESPACE, } from "../settings.js";
@@ -48,38 +49,102 @@ export function apply(ctx, rawConfig = {}) {
         maxCards: config.maxCards,
     });
     const runs = new RunService(cards);
-    const ensuredWorkspaces = new Map();
-    const workspaceOf = (session) => {
-        const sessionId = typeof session === "object" &&
+    /** sessionId → last known project cwd (real WD wins over scratch). */
+    const sessionWorkspaces = new Map();
+    const mapPath = sessionWorkspaceMapPath(dshHome);
+    if (existsSync(mapPath)) {
+        try {
+            const raw = JSON.parse(readFileSync(mapPath, "utf8"));
+            if (raw && typeof raw === "object") {
+                for (const [key, value] of Object.entries(raw)) {
+                    if (typeof value === "string" && value.trim()) {
+                        sessionWorkspaces.set(key, value);
+                    }
+                }
+            }
+        }
+        catch {
+            // corrupt map — start empty
+        }
+    }
+    const persistSessionWorkspaceMap = () => {
+        void mkdir(join(mapPath, ".."), { recursive: true })
+            .then(() => writeFile(mapPath, `${JSON.stringify(Object.fromEntries(sessionWorkspaces), null, 2)}\n`, "utf8"))
+            .catch(() => {
+            // non-fatal
+        });
+    };
+    const sessionIdOf = (session) => {
+        if (typeof session === "object" &&
             session !== null &&
             "id" in session &&
-            typeof session.id === "string"
-            ? session.id
-            : undefined;
-        if (session) {
+            typeof session.id === "string") {
+            return session.id.trim() || undefined;
+        }
+        if (typeof session === "string" && session.trim())
+            return session.trim();
+        return undefined;
+    };
+    const rememberWorkspace = (session, path) => {
+        const id = sessionIdOf(session);
+        if (!id || !path)
+            return;
+        const previous = sessionWorkspaces.get(id);
+        sessionWorkspaces.set(id, path);
+        if (previous !== path)
+            persistSessionWorkspaceMap();
+    };
+    const cwdFromProjCache = (sessionId) => {
+        const cachePath = join(dshHome, "storages", "session_projcache", "sessions", `${sessionId}.json`);
+        if (!existsSync(cachePath))
+            return undefined;
+        try {
+            const raw = JSON.parse(readFileSync(cachePath, "utf8"));
+            const cwd = raw.record?.identity?.cwd;
+            return typeof cwd === "string" && cwd.trim() ? cwd.trim() : undefined;
+        }
+        catch {
+            return undefined;
+        }
+    };
+    const workspaceOf = (session) => {
+        const sessionId = sessionIdOf(session);
+        if (session && typeof session === "object") {
             try {
                 const wd = ctx.get?.("workingDirectory");
                 const fromSession = wd?.get?.(session);
-                if (fromSession)
+                if (fromSession) {
+                    rememberWorkspace(session, fromSession);
                     return fromSession;
+                }
             }
             catch {
                 // workingDirectory may be unavailable in some profiles
             }
         }
-        return ensuredWorkspaces.get(sessionId?.trim() || "local");
+        if (sessionId) {
+            const cached = sessionWorkspaces.get(sessionId);
+            if (cached)
+                return cached;
+            const fromProj = cwdFromProjCache(sessionId);
+            if (fromProj) {
+                rememberWorkspace(sessionId, fromProj);
+                return fromProj;
+            }
+        }
+        return sessionWorkspaces.get("local");
     };
     const ensureSessionWorkspace = async (session) => {
         const existing = workspaceOf(session ? { id: session } : undefined);
         if (existing)
             return existing;
         const key = session?.trim() || "local";
-        const cached = ensuredWorkspaces.get(key);
+        const cached = sessionWorkspaces.get(key);
         if (cached)
             return cached;
         const path = sessionScratchWorkspace(dshHome, key);
         await mkdir(path, { recursive: true });
-        ensuredWorkspaces.set(key, path);
+        sessionWorkspaces.set(key, path);
         return path;
     };
     const services = {
@@ -119,7 +184,12 @@ export function apply(ctx, rawConfig = {}) {
         boards,
         cards,
         runs,
-        resolveWorkspace: (exec) => workspaceOf(exec?.agent?.session),
+        resolveWorkspace: (exec) => {
+            const session = exec?.agent?.session;
+            const path = workspaceOf(session);
+            rememberWorkspace(session, path);
+            return path;
+        },
     });
     for (const tool of tools) {
         ctx.effect(() => ctx.tools.register(tool));
@@ -157,17 +227,22 @@ export function apply(ctx, rawConfig = {}) {
             input: { hint: "<what to show>" },
             handler: async (invocation) => {
                 const request = invocation.rawInput?.trim() || DEFAULT_CANVAS_REQUEST;
-                const sessionId = invocation.agent.session?.id;
-                const workspace = workspaceOf(sessionId ? { id: sessionId } : undefined);
+                const session = invocation.agent.session;
+                const sessionId = session?.id;
+                // Prefer the live session cwd (project). Fake {id} misses WD.
+                let workspace = workspaceOf(session);
                 if (!workspace) {
-                    return {
-                        kind: "error",
-                        text: WORKSPACE_REQUIRED_HINT,
-                    };
+                    workspace = await ensureSessionWorkspace(sessionId);
+                }
+                else {
+                    rememberWorkspace(session, workspace);
                 }
                 await boards.attachWorkspace(workspace);
                 cards.setWorkspace(workspace);
                 await cards.ensureReady();
+                if (!boards.get("main")) {
+                    await boards.create({ title: "Main", slug: "main" });
+                }
                 const slug = slugify(`session-${(sessionId ?? "local").slice(0, 8)}-${request}`, "session-board");
                 const board = await boards.create({
                     title: request.slice(0, 80),
