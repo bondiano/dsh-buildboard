@@ -1,0 +1,48 @@
+direction: down
+
+dsh_user: "DSH user\ndesktop app"
+
+mf_buildboard_tab: "Buildboard tab\n[React, tldraw]"
+
+mf_settings_card: "SettingsCard\n[configForms]"
+
+buildboard_host: "apply host plugin\n[Cordis, Node.js]"
+
+board_tools: "board_ card_ tools\n[tools service]"
+
+canvas_command: "/canvas command\n[commands service]"
+
+board_api: "/plugin-api/buildboard\n[webServer route]"
+
+run_service: "RunService\n[run.machine xstate]"
+
+board_registry: "BoardRegistry\n[tldraw records]"
+
+card_library: "CardLibrary\n[Markdown cards]"
+
+db_buildboard_store: ".buildboard + DSH_HOME\n[boards JSON, cards MD]"
+
+ex_openai_images: "OpenAI Images API\n[gpt-image models]"
+
+dsh_agent: "DSH agent\n[session runtime]"
+
+dsh_user -> mf_buildboard_tab: "opens tab and fullscreen panel"
+mf_buildboard_tab -> board_api: "fetch POST\nruns endpoint"
+mf_settings_card -> buildboard_host: "edits volatile config\nbuildboard namespace"
+buildboard_host -> board_tools: "registers board_ card_\nrun_report tools"
+buildboard_host -> canvas_command: "commands.register\ncanvas"
+buildboard_host -> board_api: "webServer.register\nauthenticated route"
+buildboard_host -> dsh_agent: "systemPrompt section\ntool:buildboard"
+canvas_command -> run_service: "creates and starts\nrun"
+canvas_command -> dsh_agent: "agent.followup\nwith canvas brief"
+dsh_agent -> run_service: "agent/status and\nagent/created events"
+dsh_agent -> board_tools: "calls tools for\nboard edits"
+board_tools -> board_registry: "board shapes and\narrows"
+board_tools -> card_library: "card list read\nwrite search"
+board_tools -> ex_openai_images: "board_generate_image\nimages generations"
+ex_openai_images -> db_buildboard_store: "writes PNG assets\nbuildboard assets dir"
+board_registry -> db_buildboard_store: "boards board.json\nfiles"
+card_library -> db_buildboard_store: "cards md files\nwiki-links backlinks"
+board_api -> board_registry: "board reads and\nshape sync"
+board_api -> card_library: "card endpoints"
+board_api -> run_service: "POST runs starts\nresearch implement"
