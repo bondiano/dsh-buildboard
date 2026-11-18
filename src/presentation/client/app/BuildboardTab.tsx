@@ -1,12 +1,24 @@
 import * as React from "react";
+import { boardSlugFromAddress } from "../../../domain/board-address.js";
 import { SETTINGS_NAMESPACE } from "../../../domain/settings-ns.js";
 import { useExternalSnapshot } from "../hooks/useActorStore.js";
 import { BuildboardApp } from "./BuildboardApp.js";
 import { TabErrorBoundary } from "./TabErrorBoundary.js";
 
+export interface BuildboardTabInfo {
+	tab?: {
+		visible?: boolean;
+		contentId?: string;
+		navigation?: {
+			address?: string;
+			revision?: number;
+		};
+	};
+}
+
 export interface BuildboardTabProps {
 	sessionId?: string;
-	useTabInfo?: () => { tab?: { visible?: boolean } };
+	useTabInfo?: () => BuildboardTabInfo;
 	t?: (key: string) => string;
 	settings?: {
 		getSnapshot(): { value?: Record<string, unknown> };
@@ -37,13 +49,30 @@ function readSettingsSnapshot(settings: BuildboardTabProps["settings"]): {
 	}
 }
 
-export function BuildboardTab(props: BuildboardTabProps): React.ReactElement {
-	let visible = true;
+function readTabNav(useTabInfo: BuildboardTabProps["useTabInfo"]): {
+	visible: boolean;
+	boardSlug?: string;
+	navKey: string;
+} {
 	try {
-		visible = props.useTabInfo?.().tab?.visible !== false;
+		const info = useTabInfo?.();
+		const visible = info?.tab?.visible !== false;
+		const address =
+			info?.tab?.navigation?.address ?? info?.tab?.contentId ?? "";
+		const boardSlug = address ? boardSlugFromAddress(address) : undefined;
+		const revision = info?.tab?.navigation?.revision ?? 0;
+		return {
+			visible,
+			boardSlug,
+			navKey: `${address}:${revision}:${boardSlug ?? ""}`,
+		};
 	} catch {
-		visible = true;
+		return { visible: true, navKey: "" };
 	}
+}
+
+export function BuildboardTab(props: BuildboardTabProps): React.ReactElement {
+	const tabNav = readTabNav(props.useTabInfo);
 
 	const snapshot = useExternalSnapshot(
 		props.settings?.subscribe.bind(props.settings),
@@ -68,7 +97,9 @@ export function BuildboardTab(props: BuildboardTabProps): React.ReactElement {
 				<BuildboardApp
 					sessionId={sessionId}
 					compact
-					visible={visible}
+					visible={tabNav.visible}
+					initialBoard={tabNav.boardSlug}
+					navigationKey={tabNav.navKey}
 					licenseKey={licenseKey}
 					pollIntervalMs={pollIntervalMs}
 					t={props.t}

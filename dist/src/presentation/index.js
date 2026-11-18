@@ -27,6 +27,7 @@ export const BUILDBOARD_GUIDANCE = `DSH Buildboard is active: cards and boards l
 - Edits appear live and are marked "agent" until the user touches the same shape.
 - Project data: <workspace>/.buildboard/; global cards: $DSH_HOME/buildboard/.
 - /canvas builds a board about the current session; Research/Implement start runs — call run_report when done.
+- When finished, reply with a markdown link to \`.buildboard/boards/<slug>.board.json\` (relative path) so a click opens the Buildboard tab on the right — never HTTP and never a bare slug.
 - Prefer cards + frames + labeled arrows over dumping long text into chat.`;
 function resolveDshHome() {
     const fromEnv = process.env.DSH_HOME?.trim();

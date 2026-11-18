@@ -1,4 +1,5 @@
 import { BUILDBOARD_LOCALES } from "../../adapters/locales.js";
+import { boardSlugFromAddress, isBuildboardBoardAddress, } from "../../domain/board-address.js";
 import { SETTINGS_NAMESPACE } from "../../domain/settings-ns.js";
 import { BUILDBOARD_PANEL_ID, BuildboardTab, buildboardTabInject, } from "./app/BuildboardTab.js";
 import { BuildboardPanel } from "./app/BuildboardPanel.js";
@@ -41,7 +42,11 @@ export function apply(ctx) {
         tabsCtx.effect(() => tabs.register({
             id: BUILDBOARD_TAB_ID,
             kind: BUILDBOARD_TAB_KIND,
-            title: () => t("tab.title"),
+            // Claim board JSON so chat markdown links open Buildboard, not text preview.
+            patterns: ["dsh-resource://file/**/*.board.json", "**/*.board.json"],
+            priority: "extension",
+            canOpen: (address) => isBuildboardBoardAddress(address),
+            title: (address) => boardSlugFromAddress(address) ?? t("tab.title"),
             guide: [
                 {
                     id: "board",

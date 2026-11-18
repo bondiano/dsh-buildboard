@@ -56,9 +56,13 @@ export const appShellMachine = setup({
             };
         }),
         applyCatalog: assign(({ context, event }) => {
-            if (!("output" in event))
+            const output = event.type === "CATALOG"
+                ? event.catalog
+                : "output" in event
+                    ? event.output
+                    : undefined;
+            if (!output)
                 return {};
-            const output = event.output;
             return {
                 workspace: output.workspace,
                 boards: output.boards,
@@ -174,15 +178,36 @@ export const appShellMachine = setup({
             },
         },
         ready: {
+            initial: "idle",
             invoke: {
                 src: "pollTicks",
                 input: ({ context }) => context,
             },
             on: {
-                TICK: "refreshing",
+                CATALOG: { actions: "applyCatalog" },
                 ENSURE: "ensuring",
                 SELECT_CARD: { actions: "selectCard", target: "loadingCard" },
                 CONFIGURE: { actions: "applyConfigure", target: "bootstrapping" },
+            },
+            states: {
+                idle: {
+                    on: {
+                        // Refresh in a child state so we never leave `ready` (leaving
+                        // remounts BoardView chrome every pollIntervalMs).
+                        TICK: "polling",
+                    },
+                },
+                polling: {
+                    invoke: {
+                        src: "refreshCatalog",
+                        input: ({ context }) => context,
+                        onDone: { target: "idle", actions: "applyCatalog" },
+                        onError: { target: "idle" },
+                    },
+                    on: {
+                        TICK: {},
+                    },
+                },
             },
         },
         loadingCard: {

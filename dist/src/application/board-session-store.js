@@ -126,7 +126,8 @@ function provideMachine(runtime, CardShapeUtil) {
                     runtime.applyingRemote = false;
                 }
                 const shapeCount = Object.values(body.records).filter((record) => record?.typeName === "shape").length;
-                if (shapeCount > 0) {
+                if (shapeCount > 0 && !runtime.didInitialFit) {
+                    runtime.didInitialFit = true;
                     try {
                         runtime.editor?.zoomToFit?.({
                             animation: { duration: 200 },
@@ -153,6 +154,7 @@ export function createBoardSessionStore(CardShapeUtil) {
         dirty: false,
         applyingRemote: false,
         fallback: null,
+        didInitialFit: false,
     };
     const machine = provideMachine(runtime, CardShapeUtil);
     const base = createActorStore(machine);
@@ -165,6 +167,7 @@ export function createBoardSessionStore(CardShapeUtil) {
                 runtime.revision = 0;
                 runtime.dirty = false;
                 runtime.fallback = null;
+                runtime.didInitialFit = false;
             }
         }
         base.send(event);

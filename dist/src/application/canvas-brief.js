@@ -14,7 +14,7 @@ export function buildCanvasBrief(input) {
         `Request: ${request}`,
         "",
         "Use this session's history and the workspace code. Build the board with board_* and card_* tools.",
-        "Do not dump a long explanation in chat — reply with one short line linking to the board.",
+        `Do not dump a long explanation in chat — reply with one short markdown link to the board file so the right sidebar opens Buildboard: [${input.boardSlug}](.buildboard/boards/${input.boardSlug}.board.json)`,
         "",
         "Architecture recipe (use when the request is about architecture or when using the default):",
         "- Create frames for layers or subsystems (these are underlays).",

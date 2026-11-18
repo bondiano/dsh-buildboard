@@ -1,4 +1,8 @@
 import { BUILDBOARD_LOCALES } from "../../adapters/locales.js";
+import {
+	boardSlugFromAddress,
+	isBuildboardBoardAddress,
+} from "../../domain/board-address.js";
 import type { ClientContext } from "../../domain/types.js";
 import { SETTINGS_NAMESPACE } from "../../domain/settings-ns.js";
 import {
@@ -58,7 +62,12 @@ export function apply(ctx: ClientContext): void {
 				tabs.register({
 					id: BUILDBOARD_TAB_ID,
 					kind: BUILDBOARD_TAB_KIND,
-					title: () => t("tab.title"),
+					// Claim board JSON so chat markdown links open Buildboard, not text preview.
+					patterns: ["dsh-resource://file/**/*.board.json", "**/*.board.json"],
+					priority: "extension",
+					canOpen: (address: string) => isBuildboardBoardAddress(address),
+					title: (address: string) =>
+						boardSlugFromAddress(address) ?? t("tab.title"),
 					guide: [
 						{
 							id: "board",

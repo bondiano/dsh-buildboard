@@ -2,8 +2,7 @@ import { jsxs as _jsxs, jsx as _jsx } from "react/jsx-runtime";
 import * as React from "react";
 import { createBoardSessionStore } from "../../../application/board-session-store.js";
 import { useActorStore } from "../hooks/useActorStore.js";
-import { BuildboardMainMenu } from "./BuildboardMenu.js";
-import { BuildboardPageMenu } from "./BuildboardPageMenu.js";
+import { BoardChromeContext, BUILDBOARD_TLDRAW_COMPONENTS, } from "./BoardChromeContext.js";
 import { CardShapeUtil } from "./CardShape.js";
 function useBoardConfigure(store, props) {
     const board = props.board ?? "main";
@@ -42,26 +41,39 @@ export function BoardView(props) {
     };
     const mod = runtime.mod;
     const tlStore = runtime.store;
-    if (mod && tlStore && snapshot.matches("active")) {
-        const { Tldraw, defaultShapeUtils } = mod;
-        const researchLabel = props.researchLabel ?? "Research";
-        const implementLabel = props.implementLabel ?? "Implement";
-        const prettifyLabel = props.prettifyLabel ?? "Prettify layout";
-        return (_jsxs("div", { className: "dsh-bb-board", "data-buildboard-board": context.board, style: boardStyle, children: [_jsxs("div", { className: "dsh-bb-sync", "data-sync": context.sync, children: ["sync: ", context.sync] }), _jsx(Tldraw, { licenseKey: props.licenseKey || undefined, store: tlStore, inferDarkMode: true, shapeUtils: [...defaultShapeUtils, CardShapeUtil], components: {
-                        MainMenu: () => (_jsx(BuildboardMainMenu, { mod: mod, researchLabel: researchLabel, implementLabel: implementLabel, prettifyLabel: prettifyLabel, onResearch: props.onResearch, onImplement: props.onImplement })),
-                        PageMenu: () => (_jsx(BuildboardPageMenu, { boards: props.boards ?? [], currentSlug: props.board ?? context.board, boardsLabel: props.boardsLabel, newBoardLabel: props.newBoardLabel, onSelectBoard: (slug) => props.onSelectBoard?.(slug), onCreateBoard: props.onCreateBoard })),
-                    }, onMount: (editor) => {
-                        store.setEditor(editor);
-                        const shapeCount = Object.keys(tlStore.serialize("document") ?? {}).filter((id) => id.startsWith("shape:")).length;
-                        if (shapeCount > 0) {
-                            try {
-                                editor.zoomToFit({ animation: { duration: 0 } });
-                            }
-                            catch {
-                                // ignore
-                            }
-                        }
-                    } }), context.error ? (_jsx("p", { className: "dsh-bb-board-error", role: "status", children: context.error })) : Object.keys(tlStore.serialize("document") ?? {}).filter((id) => id.startsWith("shape:")).length === 0 ? (_jsx("p", { className: "dsh-bb-board-error", role: "status", children: "Board empty \u2014 run /canvas or draw shapes" })) : null] }));
+    const shapeUtils = React.useMemo(() => (mod ? [...mod.defaultShapeUtils, CardShapeUtil] : null), [mod]);
+    const chromeValue = React.useMemo(() => ({
+        mod,
+        boards: props.boards ?? [],
+        currentSlug: props.board ?? context.board,
+        researchLabel: props.researchLabel ?? "Research",
+        implementLabel: props.implementLabel ?? "Implement",
+        prettifyLabel: props.prettifyLabel ?? "Prettify layout",
+        boardsLabel: props.boardsLabel,
+        newBoardLabel: props.newBoardLabel,
+        onResearch: props.onResearch,
+        onImplement: props.onImplement,
+        onSelectBoard: props.onSelectBoard,
+        onCreateBoard: props.onCreateBoard,
+    }), [
+        mod,
+        props.boards,
+        props.board,
+        context.board,
+        props.researchLabel,
+        props.implementLabel,
+        props.prettifyLabel,
+        props.boardsLabel,
+        props.newBoardLabel,
+        props.onResearch,
+        props.onImplement,
+        props.onSelectBoard,
+        props.onCreateBoard,
+    ]);
+    if (mod && tlStore && shapeUtils && snapshot.matches("active")) {
+        return (_jsxs("div", { className: "dsh-bb-board", "data-buildboard-board": context.board, style: boardStyle, children: [_jsxs("div", { className: "dsh-bb-sync", "data-sync": context.sync, children: ["sync: ", context.sync] }), _jsx(BoardChromeContext.Provider, { value: chromeValue, children: _jsx(TldrawCanvas, { mod: mod, tlStore: tlStore, shapeUtils: shapeUtils, licenseKey: props.licenseKey, onEditor: (editor) => {
+                            store.setEditor(editor);
+                        } }) }), context.error ? (_jsx("p", { className: "dsh-bb-board-error", role: "status", children: context.error })) : Object.keys(tlStore.serialize("document") ?? {}).filter((id) => id.startsWith("shape:")).length === 0 ? (_jsx("p", { className: "dsh-bb-board-error", role: "status", children: "Board empty \u2014 run /canvas or draw shapes" })) : null] }));
     }
     const fallback = runtime.fallback;
     return (_jsx("div", { className: "dsh-bb-board", "data-buildboard-board": context.board, style: boardStyle, children: _jsxs("div", { className: "dsh-bb-fallback", style: { padding: 16 }, children: [_jsx("strong", { children: fallback?.title ?? context.board }), context.error ? _jsx("p", { role: "status", children: context.error }) : null, !context.error && !fallback ? (_jsx("p", { role: "status", children: "Loading canvas\u2026" })) : null, _jsx("ul", { children: Object.values(fallback?.records ?? {})
@@ -69,4 +81,27 @@ export function BoardView(props) {
                         .slice(0, 40)
                         .map((record) => (_jsxs("li", { children: [typeof record.type === "string" ? record.type : "shape", " \u00B7", " ", typeof record.id === "string" ? record.id : "?", record.meta
                                 ?.updatedBy === "agent" ? (_jsx("span", { className: "dsh-bb-agent-chip", children: "agent" })) : null] }, String(record.id)))) })] }) }));
+}
+/** Isolate Tldraw so parent catalog/sync churn does not recreate its props bag needlessly. */
+function TldrawCanvas(props) {
+    const { Tldraw } = props.mod;
+    const fitted = React.useRef(false);
+    const onEditor = props.onEditor;
+    const tlStore = props.tlStore;
+    const handleMount = React.useCallback((editor) => {
+        onEditor(editor);
+        if (fitted.current)
+            return;
+        const shapeCount = Object.keys(tlStore.serialize("document") ?? {}).filter((id) => id.startsWith("shape:")).length;
+        if (shapeCount === 0)
+            return;
+        fitted.current = true;
+        try {
+            editor.zoomToFit?.({ animation: { duration: 0 } });
+        }
+        catch {
+            // ignore
+        }
+    }, [onEditor, tlStore]);
+    return (_jsx(Tldraw, { licenseKey: props.licenseKey || undefined, store: props.tlStore, inferDarkMode: true, shapeUtils: props.shapeUtils, components: BUILDBOARD_TLDRAW_COMPONENTS, onMount: handleMount }));
 }

@@ -23,6 +23,8 @@ export interface BoardSessionRuntime {
 	dirty: boolean;
 	applyingRemote: boolean;
 	fallback: BoardSnapshot | null;
+	/** Fit camera once per board load — never on every poll (that flickers the UI). */
+	didInitialFit: boolean;
 }
 
 export interface BoardSnapshot {
@@ -164,7 +166,8 @@ function provideMachine(runtime: BoardSessionRuntime, CardShapeUtil: unknown) {
 				const shapeCount = Object.values(body.records).filter(
 					(record) => record?.typeName === "shape",
 				).length;
-				if (shapeCount > 0) {
+				if (shapeCount > 0 && !runtime.didInitialFit) {
+					runtime.didInitialFit = true;
 					try {
 						runtime.editor?.zoomToFit?.({
 							animation: { duration: 200 },
@@ -196,6 +199,7 @@ export function createBoardSessionStore(
 		dirty: false,
 		applyingRemote: false,
 		fallback: null,
+		didInitialFit: false,
 	};
 	const machine = provideMachine(runtime, CardShapeUtil);
 	const base = createActorStore(machine);
@@ -211,6 +215,7 @@ export function createBoardSessionStore(
 				runtime.revision = 0;
 				runtime.dirty = false;
 				runtime.fallback = null;
+				runtime.didInitialFit = false;
 			}
 		}
 		base.send(event);

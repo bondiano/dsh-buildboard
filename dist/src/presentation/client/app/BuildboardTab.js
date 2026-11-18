@@ -1,4 +1,5 @@
 import { jsx as _jsx } from "react/jsx-runtime";
+import { boardSlugFromAddress } from "../../../domain/board-address.js";
 import { SETTINGS_NAMESPACE } from "../../../domain/settings-ns.js";
 import { useExternalSnapshot } from "../hooks/useActorStore.js";
 import { BuildboardApp } from "./BuildboardApp.js";
@@ -15,14 +16,25 @@ function readSettingsSnapshot(settings) {
         return EMPTY_SNAPSHOT;
     }
 }
-export function BuildboardTab(props) {
-    let visible = true;
+function readTabNav(useTabInfo) {
     try {
-        visible = props.useTabInfo?.().tab?.visible !== false;
+        const info = useTabInfo?.();
+        const visible = info?.tab?.visible !== false;
+        const address = info?.tab?.navigation?.address ?? info?.tab?.contentId ?? "";
+        const boardSlug = address ? boardSlugFromAddress(address) : undefined;
+        const revision = info?.tab?.navigation?.revision ?? 0;
+        return {
+            visible,
+            boardSlug,
+            navKey: `${address}:${revision}:${boardSlug ?? ""}`,
+        };
     }
     catch {
-        visible = true;
+        return { visible: true, navKey: "" };
     }
+}
+export function BuildboardTab(props) {
+    const tabNav = readTabNav(props.useTabInfo);
     const snapshot = useExternalSnapshot(props.settings?.subscribe.bind(props.settings), () => readSettingsSnapshot(props.settings), EMPTY_SNAPSHOT);
     const licenseKey = typeof snapshot?.value?.["tldrawLicenseKey"] === "string"
         ? snapshot.value["tldrawLicenseKey"]
@@ -31,7 +43,7 @@ export function BuildboardTab(props) {
         ? snapshot.value["pollIntervalMs"]
         : 2000;
     const sessionId = props.sessionId ?? props.uiWorkspace?.getActiveSession?.()?.id;
-    return (_jsx("div", { className: "dsh-bb-host", "data-buildboard-tab-host": "", children: _jsx(TabErrorBoundary, { t: props.t, children: _jsx(BuildboardApp, { sessionId: sessionId, compact: true, visible: visible, licenseKey: licenseKey, pollIntervalMs: pollIntervalMs, t: props.t, onFullscreen: props.layout
+    return (_jsx("div", { className: "dsh-bb-host", "data-buildboard-tab-host": "", children: _jsx(TabErrorBoundary, { t: props.t, children: _jsx(BuildboardApp, { sessionId: sessionId, compact: true, visible: tabNav.visible, initialBoard: tabNav.boardSlug, navigationKey: tabNav.navKey, licenseKey: licenseKey, pollIntervalMs: pollIntervalMs, t: props.t, onFullscreen: props.layout
                     ? () => props.layout?.selectPanel(BUILDBOARD_PANEL_ID)
                     : undefined, canStartSession: typeof props.uiWorkspace?.startSession === "function", onStartRun: (_kind, _board, prompt) => {
                     props.uiWorkspace?.startSession?.(undefined, {

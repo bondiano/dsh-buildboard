@@ -2,8 +2,11 @@ import * as React from "react";
 import { createBoardSessionStore } from "../../../application/board-session-store.js";
 import type { BoardSummary } from "../../../domain/board.js";
 import { useActorStore } from "../hooks/useActorStore.js";
-import { BuildboardMainMenu } from "./BuildboardMenu.js";
-import { BuildboardPageMenu } from "./BuildboardPageMenu.js";
+import {
+	BoardChromeContext,
+	BUILDBOARD_TLDRAW_COMPONENTS,
+	type BoardChromeValue,
+} from "./BoardChromeContext.js";
 import { CardShapeUtil } from "./CardShape.js";
 
 export interface BoardViewProps {
@@ -75,11 +78,44 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 
 	const mod = runtime.mod;
 	const tlStore = runtime.store;
-	if (mod && tlStore && snapshot.matches("active")) {
-		const { Tldraw, defaultShapeUtils } = mod;
-		const researchLabel = props.researchLabel ?? "Research";
-		const implementLabel = props.implementLabel ?? "Implement";
-		const prettifyLabel = props.prettifyLabel ?? "Prettify layout";
+	const shapeUtils = React.useMemo(
+		() => (mod ? [...mod.defaultShapeUtils, CardShapeUtil] : null),
+		[mod],
+	);
+
+	const chromeValue = React.useMemo<BoardChromeValue>(
+		() => ({
+			mod,
+			boards: props.boards ?? [],
+			currentSlug: props.board ?? context.board,
+			researchLabel: props.researchLabel ?? "Research",
+			implementLabel: props.implementLabel ?? "Implement",
+			prettifyLabel: props.prettifyLabel ?? "Prettify layout",
+			boardsLabel: props.boardsLabel,
+			newBoardLabel: props.newBoardLabel,
+			onResearch: props.onResearch,
+			onImplement: props.onImplement,
+			onSelectBoard: props.onSelectBoard,
+			onCreateBoard: props.onCreateBoard,
+		}),
+		[
+			mod,
+			props.boards,
+			props.board,
+			context.board,
+			props.researchLabel,
+			props.implementLabel,
+			props.prettifyLabel,
+			props.boardsLabel,
+			props.newBoardLabel,
+			props.onResearch,
+			props.onImplement,
+			props.onSelectBoard,
+			props.onCreateBoard,
+		],
+	);
+
+	if (mod && tlStore && shapeUtils && snapshot.matches("active")) {
 		return (
 			<div
 				className="dsh-bb-board"
@@ -89,47 +125,17 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 				<div className="dsh-bb-sync" data-sync={context.sync}>
 					sync: {context.sync}
 				</div>
-				<Tldraw
-					licenseKey={props.licenseKey || undefined}
-					store={tlStore}
-					inferDarkMode
-					shapeUtils={[...defaultShapeUtils, CardShapeUtil]}
-					components={{
-						MainMenu: () => (
-							<BuildboardMainMenu
-								mod={mod}
-								researchLabel={researchLabel}
-								implementLabel={implementLabel}
-								prettifyLabel={prettifyLabel}
-								onResearch={props.onResearch}
-								onImplement={props.onImplement}
-							/>
-						),
-						PageMenu: () => (
-							<BuildboardPageMenu
-								boards={props.boards ?? []}
-								currentSlug={props.board ?? context.board}
-								boardsLabel={props.boardsLabel}
-								newBoardLabel={props.newBoardLabel}
-								onSelectBoard={(slug) => props.onSelectBoard?.(slug)}
-								onCreateBoard={props.onCreateBoard}
-							/>
-						),
-					}}
-					onMount={(editor) => {
-						store.setEditor(editor);
-						const shapeCount = Object.keys(
-							tlStore.serialize("document") ?? {},
-						).filter((id) => id.startsWith("shape:")).length;
-						if (shapeCount > 0) {
-							try {
-								editor.zoomToFit({ animation: { duration: 0 } });
-							} catch {
-								// ignore
-							}
-						}
-					}}
-				/>
+				<BoardChromeContext.Provider value={chromeValue}>
+					<TldrawCanvas
+						mod={mod}
+						tlStore={tlStore}
+						shapeUtils={shapeUtils}
+						licenseKey={props.licenseKey}
+						onEditor={(editor) => {
+							store.setEditor(editor);
+						}}
+					/>
+				</BoardChromeContext.Provider>
 				{context.error ? (
 					<p className="dsh-bb-board-error" role="status">
 						{context.error}
@@ -175,5 +181,56 @@ export function BoardView(props: BoardViewProps): React.ReactElement {
 				</ul>
 			</div>
 		</div>
+	);
+}
+
+interface TldrawCanvasProps {
+	mod: typeof import("tldraw");
+	tlStore: NonNullable<
+		ReturnType<typeof createBoardSessionStore>["runtime"]["store"]
+	>;
+	shapeUtils: unknown[];
+	licenseKey?: string;
+	onEditor: (editor: {
+		zoomToFit?(opts?: { animation?: { duration: number } }): void;
+	}) => void;
+}
+
+/** Isolate Tldraw so parent catalog/sync churn does not recreate its props bag needlessly. */
+function TldrawCanvas(props: TldrawCanvasProps): React.ReactElement {
+	const { Tldraw } = props.mod;
+	const fitted = React.useRef(false);
+	const onEditor = props.onEditor;
+	const tlStore = props.tlStore;
+
+	const handleMount = React.useCallback(
+		(editor: {
+			zoomToFit?(opts?: { animation?: { duration: number } }): void;
+		}) => {
+			onEditor(editor);
+			if (fitted.current) return;
+			const shapeCount = Object.keys(
+				tlStore.serialize("document") ?? {},
+			).filter((id) => id.startsWith("shape:")).length;
+			if (shapeCount === 0) return;
+			fitted.current = true;
+			try {
+				editor.zoomToFit?.({ animation: { duration: 0 } });
+			} catch {
+				// ignore
+			}
+		},
+		[onEditor, tlStore],
+	);
+
+	return (
+		<Tldraw
+			licenseKey={props.licenseKey || undefined}
+			store={props.tlStore}
+			inferDarkMode
+			shapeUtils={props.shapeUtils as never}
+			components={BUILDBOARD_TLDRAW_COMPONENTS}
+			onMount={handleMount as never}
+		/>
 	);
 }

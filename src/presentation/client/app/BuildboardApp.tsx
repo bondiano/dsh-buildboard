@@ -9,6 +9,10 @@ export interface BuildboardAppProps {
 	sessionId?: string;
 	compact?: boolean;
 	visible?: boolean;
+	/** Board slug from a sidebar resource open (chat markdown link). */
+	initialBoard?: string;
+	/** Changes when sidebar navigates to another board address. */
+	navigationKey?: string;
 	licenseKey?: string;
 	pollIntervalMs?: number;
 	t?: (key: string) => string;
@@ -68,31 +72,97 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 		props.pollIntervalMs ?? 2000,
 	);
 
-	const startRun = async (kind: "research" | "implement"): Promise<void> => {
-		const board = context.board;
-		const brief = `Buildboard ${kind} on board ${board}. Use board_* and card_* tools, then run_report.`;
-		const sessionQuery = props.sessionId
-			? `session=${encodeURIComponent(props.sessionId)}`
-			: "";
-		try {
-			const response = await fetch(
-				`${BUILDBOARD_API_ROUTE}/runs?${sessionQuery}`,
-				{
-					method: "POST",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({ kind, boardSlug: board, brief }),
-				},
-			);
-			const body = (await response.json()) as { run?: { id?: string } };
-			const runId = body.run?.id;
-			const prompt = runId
-				? `${brief}\n\nRun id: ${runId}. Open board slug: ${board}.`
-				: brief;
-			props.onStartRun?.(kind, board, prompt);
-		} catch {
-			props.onStartRun?.(kind, board, brief);
-		}
-	};
+	const navKey = props.navigationKey ?? "";
+	const lastNav = React.useRef("");
+	if (
+		props.initialBoard &&
+		navKey &&
+		lastNav.current !== navKey &&
+		props.initialBoard !== context.board
+	) {
+		lastNav.current = navKey;
+		queueMicrotask(() => {
+			store.send({ type: "SET_BOARD", board: props.initialBoard! });
+		});
+	}
+
+	const onStartRun = props.onStartRun;
+	const sessionId = props.sessionId;
+	const boardSlug = context.board;
+	const startRun = React.useCallback(
+		async (kind: "research" | "implement"): Promise<void> => {
+			const brief = `Buildboard ${kind} on board ${boardSlug}. Use board_* and card_* tools, then run_report.`;
+			const sessionQuery = sessionId
+				? `session=${encodeURIComponent(sessionId)}`
+				: "";
+			try {
+				const response = await fetch(
+					`${BUILDBOARD_API_ROUTE}/runs?${sessionQuery}`,
+					{
+						method: "POST",
+						headers: { "content-type": "application/json" },
+						body: JSON.stringify({ kind, boardSlug, brief }),
+					},
+				);
+				const body = (await response.json()) as { run?: { id?: string } };
+				const runId = body.run?.id;
+				const prompt = runId
+					? `${brief}\n\nRun id: ${runId}. Open board slug: ${boardSlug}.`
+					: brief;
+				onStartRun?.(kind, boardSlug, prompt);
+			} catch {
+				onStartRun?.(kind, boardSlug, brief);
+			}
+		},
+		[boardSlug, onStartRun, sessionId],
+	);
+
+	const onResearch = React.useCallback(() => {
+		void startRun("research");
+	}, [startRun]);
+	const onImplement = React.useCallback(() => {
+		void startRun("implement");
+	}, [startRun]);
+	const onSelectBoard = React.useCallback(
+		(slug: string) => {
+			store.send({ type: "SET_BOARD", board: slug });
+		},
+		[store],
+	);
+	const boardCount = context.boards.length;
+	const visible = props.visible !== false;
+	const pollIntervalMs = props.pollIntervalMs ?? 2000;
+	const onCreateBoard = React.useCallback(() => {
+		void (async () => {
+			const sessionQuery = sessionId
+				? `session=${encodeURIComponent(sessionId)}`
+				: "";
+			try {
+				const response = await fetch(
+					`${BUILDBOARD_API_ROUTE}/boards?${sessionQuery}`,
+					{
+						method: "POST",
+						headers: { "content-type": "application/json" },
+						body: JSON.stringify({
+							title: `Board ${boardCount + 1}`,
+						}),
+					},
+				);
+				const body = (await response.json()) as { slug?: string };
+				if (typeof body.slug === "string") {
+					store.send({ type: "SET_BOARD", board: body.slug });
+				}
+				store.send({
+					type: "CONFIGURE",
+					sessionId,
+					visible,
+					pollIntervalMs,
+				});
+			} catch {
+				// catalog poll will catch up
+			}
+		})();
+	}, [boardCount, pollIntervalMs, sessionId, store, visible]);
 
 	const rootStyle: React.CSSProperties = {
 		display: "flex",
@@ -215,46 +285,10 @@ export function BuildboardApp(props: BuildboardAppProps): React.ReactElement {
 						)}
 						boardsLabel={label(props.t, "boards.title", "Boards")}
 						newBoardLabel={label(props.t, "boards.new", "New board")}
-						onResearch={() => {
-							void startRun("research");
-						}}
-						onImplement={() => {
-							void startRun("implement");
-						}}
-						onSelectBoard={(slug) => {
-							store.send({ type: "SET_BOARD", board: slug });
-						}}
-						onCreateBoard={() => {
-							void (async () => {
-								const sessionQuery = props.sessionId
-									? `session=${encodeURIComponent(props.sessionId)}`
-									: "";
-								try {
-									const response = await fetch(
-										`${BUILDBOARD_API_ROUTE}/boards?${sessionQuery}`,
-										{
-											method: "POST",
-											headers: { "content-type": "application/json" },
-											body: JSON.stringify({
-												title: `Board ${context.boards.length + 1}`,
-											}),
-										},
-									);
-									const body = (await response.json()) as { slug?: string };
-									if (typeof body.slug === "string") {
-										store.send({ type: "SET_BOARD", board: body.slug });
-									}
-									store.send({
-										type: "CONFIGURE",
-										sessionId: props.sessionId,
-										visible: props.visible !== false,
-										pollIntervalMs: props.pollIntervalMs ?? 2000,
-									});
-								} catch {
-									// catalog poll will catch up
-								}
-							})();
-						}}
+						onResearch={onResearch}
+						onImplement={onImplement}
+						onSelectBoard={onSelectBoard}
+						onCreateBoard={onCreateBoard}
 					/>
 				)}
 				{props.compact ? null : (

@@ -59,7 +59,12 @@ test("app shell refreshes into ready when workspace exists", async () => {
     actor.start();
     actor.send({ type: "CONFIGURE", visible: true, pollIntervalMs: 60_000 });
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.equal(actor.getSnapshot().value, "ready");
+    assert.equal(actor.getSnapshot().matches("ready"), true);
+    assert.equal(actor.getSnapshot().context.workspace, "/tmp/ws");
+    actor.send({ type: "TICK" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Catalog poll must stay inside ready (no flicker remount of BoardView).
+    assert.equal(actor.getSnapshot().matches("ready"), true);
     assert.equal(actor.getSnapshot().context.workspace, "/tmp/ws");
     actor.stop();
 });

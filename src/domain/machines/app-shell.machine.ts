@@ -48,7 +48,8 @@ export type AppShellEvent =
 	| { type: "SELECT_CARD"; card: CardSummary }
 	| { type: "CLEAR_CARD" }
 	| { type: "CARD_SAVED"; title: string; body: string }
-	| { type: "TICK" };
+	| { type: "TICK" }
+	| { type: "CATALOG"; catalog: AppShellCatalog };
 
 /** Keep an existing selection; otherwise prefer the newest session board. */
 export function preferBoard(boards: BoardSummary[], current: string): string {
@@ -111,8 +112,13 @@ export const appShellMachine = setup({
 			};
 		}),
 		applyCatalog: assign(({ context, event }) => {
-			if (!("output" in event)) return {};
-			const output = event.output as AppShellCatalog;
+			const output =
+				event.type === "CATALOG"
+					? event.catalog
+					: "output" in event
+						? (event.output as AppShellCatalog)
+						: undefined;
+			if (!output) return {};
 			return {
 				workspace: output.workspace,
 				boards: output.boards,
@@ -231,15 +237,36 @@ export const appShellMachine = setup({
 			},
 		},
 		ready: {
+			initial: "idle",
 			invoke: {
 				src: "pollTicks",
 				input: ({ context }) => context,
 			},
 			on: {
-				TICK: "refreshing",
+				CATALOG: { actions: "applyCatalog" },
 				ENSURE: "ensuring",
 				SELECT_CARD: { actions: "selectCard", target: "loadingCard" },
 				CONFIGURE: { actions: "applyConfigure", target: "bootstrapping" },
+			},
+			states: {
+				idle: {
+					on: {
+						// Refresh in a child state so we never leave `ready` (leaving
+						// remounts BoardView chrome every pollIntervalMs).
+						TICK: "polling",
+					},
+				},
+				polling: {
+					invoke: {
+						src: "refreshCatalog",
+						input: ({ context }) => context,
+						onDone: { target: "idle", actions: "applyCatalog" },
+						onError: { target: "idle" },
+					},
+					on: {
+						TICK: {},
+					},
+				},
 			},
 		},
 		loadingCard: {
