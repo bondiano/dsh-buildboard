@@ -3,105 +3,98 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-
 const workspace = await mkdtemp(join(tmpdir(), "bb-e2e-"));
 const dshHome = await mkdtemp(join(tmpdir(), "bb-e2e-home-"));
 process.env.DSH_HOME = dshHome;
-
 const root = join(new URL("../../..", import.meta.url).pathname);
 const { apply } = await import(pathToFileURL(join(root, "dist/index.js")).href);
-const { handleBuildboardHttp } = await import(
-	pathToFileURL(join(root, "dist/src/presentation/routes.js")).href
-);
-
+const { handleBuildboardHttp } = await import(pathToFileURL(join(root, "dist/src/presentation/routes.js")).href);
 const tools = [];
 const ctx = {
-	tools: {
-		register(tool) {
-			tools.push(tool);
-			return () => {};
-		},
-	},
-	systemPrompt: {
-		section() {
-			return () => {};
-		},
-	},
-	effect(disposer) {
-		if (typeof disposer === "function") disposer();
-	},
-	inject() {},
-	logger: { warn() {} },
-	get() {
-		return { get: () => workspace };
-	},
+    tools: {
+        register(tool) {
+            tools.push(tool);
+            return () => { };
+        },
+    },
+    systemPrompt: {
+        section() {
+            return () => { };
+        },
+    },
+    effect(disposer) {
+        if (typeof disposer === "function")
+            disposer();
+    },
+    inject() { },
+    logger: { warn() { } },
+    get() {
+        return { get: () => workspace };
+    },
 };
-
 const services = apply(ctx, {});
 await services.boards.attachWorkspace(workspace);
 services.cards.setWorkspace(workspace);
 await services.cards.ensureReady();
 await services.boards.create({ title: "Main", slug: "main" });
 services.boards.applyDiff("main", {
-	put: [
-		{
-			id: "shape:sticky",
-			typeName: "shape",
-			type: "note",
-			x: 80,
-			y: 120,
-			props: { text: "Launch checklist", color: "yellow", w: 220, h: 140 },
-			meta: { updatedBy: "agent" },
-		},
-		{
-			id: "shape:card",
-			typeName: "shape",
-			type: "card",
-			x: 360,
-			y: 120,
-			props: {
-				title: "Auth gateway",
-				excerpt: "TLS terminate → session cookie",
-				w: 260,
-				h: 160,
-				kind: "note",
-			},
-		},
-		{
-			id: "shape:frame",
-			typeName: "shape",
-			type: "frame",
-			x: 60,
-			y: 60,
-			props: { w: 620, h: 320, name: "Edge" },
-		},
-	],
-	actor: "agent",
+    put: [
+        {
+            id: "shape:sticky",
+            typeName: "shape",
+            type: "note",
+            x: 80,
+            y: 120,
+            props: { text: "Launch checklist", color: "yellow", w: 220, h: 140 },
+            meta: { updatedBy: "agent" },
+        },
+        {
+            id: "shape:card",
+            typeName: "shape",
+            type: "card",
+            x: 360,
+            y: 120,
+            props: {
+                title: "Auth gateway",
+                excerpt: "TLS terminate → session cookie",
+                w: 260,
+                h: 160,
+                kind: "note",
+            },
+        },
+        {
+            id: "shape:frame",
+            typeName: "shape",
+            type: "frame",
+            x: 60,
+            y: 60,
+            props: { w: 620, h: 320, name: "Edge" },
+        },
+    ],
+    actor: "agent",
 });
 await services.cards.write({
-	scope: "project",
-	title: "Auth gateway",
-	body: "Terminates TLS and issues session cookies.\n\nSee [[session-store]].",
-	tags: ["arch"],
+    scope: "project",
+    title: "Auth gateway",
+    body: "Terminates TLS and issues session cookies.\n\nSee [[session-store]].",
+    tags: ["arch"],
 });
-
 const routeServices = {
-	boards: services.boards,
-	cards: services.cards,
-	runs: services.runs,
-	resolveWorkspace: () => workspace,
-	ensureSessionWorkspace: async () => workspace,
+    boards: services.boards,
+    cards: services.cards,
+    runs: services.runs,
+    resolveWorkspace: () => workspace,
+    ensureSessionWorkspace: async () => workspace,
 };
-
 const server = createServer(async (req, res) => {
-	if (req.url?.startsWith("/plugin-api/buildboard")) {
-		res.setHeader("access-control-allow-origin", "*");
-		await handleBuildboardHttp(routeServices, req, res);
-		return;
-	}
-	if (req.url === "/" || req.url?.startsWith("/index")) {
-		res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-		res.end(`<!doctype html>
+    if (req.url?.startsWith("/plugin-api/buildboard")) {
+        res.setHeader("access-control-allow-origin", "*");
+        await handleBuildboardHttp(routeServices, req, res);
+        return;
+    }
+    if (req.url === "/" || req.url?.startsWith("/index")) {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(`<!doctype html>
 <html><head><meta charset="utf-8"/><title>Buildboard demo</title>
 <style>
 body{margin:0;font-family:ui-sans-serif,system-ui;background:#111;color:#eee}
@@ -123,23 +116,20 @@ h1{font-size:18px;margin:0 0 12px}
 </main>
 <aside><h1>Runs</h1><div class="card">canvas · running</div></aside>
 </div></body></html>`);
-		return;
-	}
-	res.writeHead(404);
-	res.end("not found");
+        return;
+    }
+    res.writeHead(404);
+    res.end("not found");
 });
-
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-const { port } = server.address();
-process.stdout.write(
-	JSON.stringify({ port, workspace, dshHome, tools: tools.map((t) => t.name) }),
-);
-
+const address = server.address();
+const port = typeof address === "object" && address ? address.port : 0;
+process.stdout.write(JSON.stringify({ port, workspace, dshHome, tools: tools.map((t) => t.name) }));
 async function shutdown() {
-	server.close();
-	await rm(workspace, { recursive: true, force: true });
-	await rm(dshHome, { recursive: true, force: true });
-	process.exit(0);
+    server.close();
+    await rm(workspace, { recursive: true, force: true });
+    await rm(dshHome, { recursive: true, force: true });
+    process.exit(0);
 }
 process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());

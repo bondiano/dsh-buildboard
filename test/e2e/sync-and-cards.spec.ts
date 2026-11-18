@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 
 async function startHarness(): Promise<{ port: number; kill: () => void }> {
-	const child = spawn(process.execPath, [join(here, "harness/server.mjs")], {
+	const child = spawn(process.execPath, [join(here, "harness/server.ts")], {
 		cwd: join(here, "../.."),
 		stdio: ["ignore", "pipe", "pipe"],
 	});

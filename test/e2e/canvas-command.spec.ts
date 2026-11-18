@@ -10,7 +10,7 @@ async function startHarness(): Promise<{
 	kill: () => void;
 	tools: string[];
 }> {
-	const child = spawn(process.execPath, [join(here, "harness/server.mjs")], {
+	const child = spawn(process.execPath, [join(here, "harness/server.ts")], {
 		cwd: join(here, "../.."),
 		stdio: ["ignore", "pipe", "pipe"],
 	});
