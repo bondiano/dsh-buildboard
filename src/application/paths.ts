@@ -22,6 +22,15 @@ export function projectCardPath(workspace: string, id: string): string {
 	return join(projectCardsDir(workspace), `${id}.md`);
 }
 
+/** Generated OpenAI image assets for boards / card markdown. */
+export function projectAssetsDir(workspace: string): string {
+	return join(projectRoot(workspace), "assets");
+}
+
+export function projectAssetPath(workspace: string, fileName: string): string {
+	return join(projectAssetsDir(workspace), fileName);
+}
+
 /** Global library under $DSH_HOME/buildboard. */
 export function globalRoot(dshHome: string): string {
 	return join(dshHome, "buildboard");

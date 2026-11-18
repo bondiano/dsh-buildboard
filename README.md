@@ -14,7 +14,7 @@ Heptabase-style whiteboard for DeepSeek Harness: **cards** (project + global), *
 
 - **Cards first.** Markdown documents in `<workspace>/.buildboard/cards/` and `$DSH_HOME/buildboard/cards/`. One card can sit on many boards; `[[wiki-links]]` get backlinks.
 - **Boards on tldraw.** Infinite canvas with notes, frames, arrows and a custom `card` shape. Multiple boards per project.
-- **Agent tools.** `board_*`, `card_*`, `run_report` — surgical edits, live sync.
+- **Agent tools.** `board_*` (including `board_validate`), `card_*`, `run_report` — surgical edits, live sync, and a fast preflight against tldraw ValidationError.
 - **`/canvas <request>`.** Builds a board about the current session (default: explain architecture) and wakes the agent with a structured brief.
 - **Research / Implement.** Start a run from the toolbar; progress lives on the run ledger and optional card frontmatter.
 - **Fullscreen.** Main-column Buildboard panel plus the right-sidebar tab.
@@ -73,8 +73,8 @@ DSH_ALLOW_BROWSER=1 npm run test:e2e -- -g screenshot   # refresh docs/screensho
 - `src/domain/` — card, board, run, xstate machines
 - `src/application/` — card library, board registry, run service, briefs
 - `src/adapters/` — tools, markdown, legacy JSON Canvas
-- `src/host/` — Cordis apply, HTTP routes, `/canvas`
-- `src/client/` — React tab, panel, tldraw board view, settings
+- `src/presentation/` — Cordis apply, HTTP routes, `/canvas`, and React client UI
+- `src/application/` — host services and client XState actor stores
 
 ## License
 

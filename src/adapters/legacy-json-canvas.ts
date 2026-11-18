@@ -1,7 +1,4 @@
-import {
-	normalizeBoardRecords,
-	type BoardRecord,
-} from "../domain/board.js";
+import { normalizeBoardRecords, type BoardRecord } from "../domain/board.js";
 import { createId } from "../domain/ids.js";
 
 /** Minimal JSON Canvas 1.0 shapes we import from cult-canvas.canvas. */

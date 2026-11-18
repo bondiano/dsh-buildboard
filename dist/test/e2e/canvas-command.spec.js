@@ -36,6 +36,7 @@ test("/canvas creates a board and agent tools can populate it", async () => {
     try {
         const base = `http://127.0.0.1:${harness.port}`;
         expect(harness.tools).toContain("board_create_shape");
+        expect(harness.tools).toContain("board_validate");
         expect(harness.tools).toContain("card_write");
         expect(harness.tools).toContain("run_report");
         const boardsBefore = (await (await fetch(`${base}/plugin-api/buildboard/boards`)).json());

@@ -30,6 +30,7 @@
 			}
 		]
 	},
+
 	"ignorePatterns": ["node_modules/**", "dist/**", "lib/**"],
 	"overrides": [
 		{
@@ -66,7 +67,11 @@
 			}
 		},
 		{
-			"files": ["client.ts", "src/presentation/client.ts", "types/client.d.ts"],
+			"files": [
+				"client.ts",
+				"src/presentation/client/**/*.{ts,tsx}",
+				"types/client.d.ts"
+			],
 			"env": {
 				"browser": true
 			}

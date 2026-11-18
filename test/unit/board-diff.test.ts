@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applyBoardDiff } from "../../src/domain/board.js";
+import { validateBoardRecords } from "../../src/domain/board-validate.js";
 import { importJsonCanvas } from "../../src/adapters/legacy-json-canvas.js";
 import { nextRunStatus } from "../../src/domain/machines/run.machine.js";
 import { buildCanvasBrief } from "../../src/application/canvas-brief.js";
@@ -67,4 +68,39 @@ test("canvas brief defaults to architecture request", () => {
 	assert.match(brief, /architecture/i);
 	assert.match(brief, /board_\*/);
 	assert.match(brief, /session-board/);
+	assert.match(brief, /board_validate/);
+	assert.match(brief, /board_generate_image/);
+	assert.match(brief, /contrast|WCAG/i);
+});
+
+test("validateBoardRecords flags missing rotation and repairs", () => {
+	const records = {
+		"page:page": {
+			id: "page:page",
+			typeName: "page",
+			name: "Page 1",
+			meta: {},
+			index: "a1",
+		},
+		"shape:1": {
+			id: "shape:1",
+			typeName: "shape",
+			type: "card",
+			x: 0,
+			y: 0,
+			props: { w: 100, h: 80, title: "A", excerpt: "", kind: "note" },
+			parentId: "page:page",
+			index: "a1",
+			meta: {},
+		},
+	};
+	const bad = validateBoardRecords(records);
+	assert.equal(bad.ok, false);
+	assert.ok(bad.errors.some((issue) => issue.code === "missing_rotation"));
+	const repaired = validateBoardRecords(records, { repair: true });
+	assert.ok((repaired.repaired?.length ?? 0) >= 1);
+	const fixed = repaired.repaired![0]!;
+	assert.equal(fixed.rotation, 0);
+	assert.equal(fixed.isLocked, false);
+	assert.equal((fixed.props as { cardRef: string }).cardRef, "");
 });

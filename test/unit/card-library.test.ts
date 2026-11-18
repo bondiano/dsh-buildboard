@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { BoardRegistry } from "../../src/application/board-document.js";
 import { CardLibrary } from "../../src/application/card-library.js";
 import { RunService } from "../../src/application/run-service.js";
-import { respondBuildboard } from "../../src/host/routes.js";
+import { respondBuildboard } from "../../src/presentation/routes.js";
 
 test("card library persists and indexes backlinks", async () => {
 	const root = await mkdtemp(join(tmpdir(), "bb-cards-"));

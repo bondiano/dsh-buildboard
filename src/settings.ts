@@ -5,15 +5,21 @@
  */
 import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
+import {
+	DEFAULT_IMAGE_MODEL,
+	normalizeImageModel,
+	type OpenAIImageModel,
+} from "./adapters/openai-images.js";
 
 export { SETTINGS_NAMESPACE } from "./domain/settings-ns.js";
-
 
 export interface Config {
 	maxCards: Volatile<number>;
 	maxBoards: Volatile<number>;
 	pollIntervalMs: Volatile<number>;
 	tldrawLicenseKey: Volatile<string>;
+	openaiApiKey: Volatile<string>;
+	openaiImageModel: Volatile<string>;
 }
 
 export const Config = z.object({
@@ -21,6 +27,8 @@ export const Config = z.object({
 	maxBoards: z.natural().min(1).max(5_000).default(200).volatile(),
 	pollIntervalMs: z.natural().min(250).max(30_000).default(2_000).volatile(),
 	tldrawLicenseKey: z.string().default("").volatile(),
+	openaiApiKey: z.string().default("").volatile(),
+	openaiImageModel: z.string().default(DEFAULT_IMAGE_MODEL).volatile(),
 });
 
 export interface BuildboardSettings {
@@ -28,6 +36,8 @@ export interface BuildboardSettings {
 	maxBoards: number;
 	pollIntervalMs: number;
 	tldrawLicenseKey: string;
+	openaiApiKey: string;
+	openaiImageModel: OpenAIImageModel;
 }
 
 export const DEFAULT_SETTINGS: Readonly<BuildboardSettings> = Object.freeze({
@@ -35,6 +45,8 @@ export const DEFAULT_SETTINGS: Readonly<BuildboardSettings> = Object.freeze({
 	maxBoards: 200,
 	pollIntervalMs: 2_000,
 	tldrawLicenseKey: "",
+	openaiApiKey: "",
+	openaiImageModel: DEFAULT_IMAGE_MODEL,
 });
 
 export function resolveSettings(raw: unknown): BuildboardSettings {
@@ -65,6 +77,11 @@ export function resolveSettings(raw: unknown): BuildboardSettings {
 			typeof input["tldrawLicenseKey"] === "string"
 				? input["tldrawLicenseKey"].slice(0, 512)
 				: "",
+		openaiApiKey:
+			typeof input["openaiApiKey"] === "string"
+				? input["openaiApiKey"].slice(0, 256)
+				: "",
+		openaiImageModel: normalizeImageModel(input["openaiImageModel"]),
 	};
 }
 

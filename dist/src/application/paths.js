@@ -16,6 +16,13 @@ export function projectBoardPath(workspace, slug) {
 export function projectCardPath(workspace, id) {
     return join(projectCardsDir(workspace), `${id}.md`);
 }
+/** Generated OpenAI image assets for boards / card markdown. */
+export function projectAssetsDir(workspace) {
+    return join(projectRoot(workspace), "assets");
+}
+export function projectAssetPath(workspace, fileName) {
+    return join(projectAssetsDir(workspace), fileName);
+}
 /** Global library under $DSH_HOME/buildboard. */
 export function globalRoot(dshHome) {
     return join(dshHome, "buildboard");

@@ -29,7 +29,7 @@ test("HTTP {id} reuses project cwd remembered from live agent session", () => {
     const project = "/Users/me/per-the-spec";
     const first = resolveWorkspace({
         session: live,
-        workingDirectoryGet: (session) => session === live ? project : undefined,
+        workingDirectoryGet: (session) => (session === live ? project : undefined),
         remembered,
     });
     assert.equal(first, project);

@@ -25,5 +25,8 @@
 	"settings.maxBoards": "Max boards",
 	"settings.pollIntervalMs": "Poll interval (ms)",
 	"settings.tldrawLicenseKey": "tldraw license key",
+	"settings.openaiApiKey": "OpenAI API key (images)",
+	"settings.openaiImageModel": "OpenAI image model",
+	"settings.openaiHelp": "Images use OPENAI_API_KEY from the environment when set; otherwise this key. Model default: gpt-image-2.6-sunburst (or gpt-image-2.6-flare).",
 	"settings.error": "Could not save setting"
 }

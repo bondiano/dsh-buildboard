@@ -1,4 +1,4 @@
-import { normalizeBoardRecords, } from "../domain/board.js";
+import { normalizeBoardRecords } from "../domain/board.js";
 import { createId } from "../domain/ids.js";
 function asString(value, fallback = "") {
     return typeof value === "string" ? value : fallback;

@@ -3,4 +3,4 @@ export {
 	clientPlugin,
 	clientPluginFactory,
 	default,
-} from "./src/client/index.js";
+} from "./src/presentation/client/index.js";

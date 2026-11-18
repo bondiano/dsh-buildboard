@@ -11,7 +11,7 @@ import {
 	WORKSPACE_REQUIRED_HINT,
 	WORKSPACE_REQUIRED_MESSAGE,
 } from "../../src/domain/route.js";
-import { respondBuildboard } from "../../src/host/routes.js";
+import { respondBuildboard } from "../../src/presentation/routes.js";
 
 test("board create without workspace throws stable message", async () => {
 	const boards = new BoardRegistry();

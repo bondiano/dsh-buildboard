@@ -1,18 +1,36 @@
 import type { BoardRegistry } from "../../application/board-document.js";
 import type { CardLibrary } from "../../application/card-library.js";
+import { projectAssetsDir } from "../../application/paths.js";
 import type { RunService } from "../../application/run-service.js";
+import { validateBoardRecords } from "../../domain/board-validate.js";
 import { createId, parseCardRef, type CardScope } from "../../domain/ids.js";
 import type {
 	HostContext,
 	ToolDefinition,
 	ToolExec,
 } from "../../domain/types.js";
+import {
+	IMAGE_SETUP_HINT,
+	buildImageShapeRecords,
+	generateOpenAIImage,
+	normalizeImageModel,
+	resolveImageAuth,
+	writeGeneratedAsset,
+	type OpenAIImageModel,
+} from "../openai-images.js";
+
+export interface ToolImageSettings {
+	openaiApiKey: string;
+	openaiImageModel: OpenAIImageModel;
+}
 
 export interface ToolServices {
 	boards: BoardRegistry;
 	cards: CardLibrary;
 	runs: RunService;
 	resolveWorkspace: (exec?: ToolExec) => string | undefined;
+	/** Latest image-generation settings (env key still wins). */
+	getImageSettings?: () => ToolImageSettings;
 }
 
 function textOutput() {
@@ -297,6 +315,180 @@ export function buildBuildboardTools(
 					clientTime: Date.now(),
 				});
 				return { laidOut: put.length, revision: snap.revision };
+			},
+		},
+		{
+			name: "board_validate",
+			description:
+				"Fast-check board records for tldraw ValidationError causes (rotation/opacity/isLocked, card props, unbound/orphan/non-touching arrows, WCAG contrast). Optionally repair base fields and run the /canvas architecture recipe checks.",
+			parameters: {
+				type: "object",
+				properties: {
+					board: { type: "string" },
+					repair: {
+						type: "boolean",
+						description:
+							"Normalize missing shape base/card fields and write them back",
+					},
+					recipe: {
+						type: "string",
+						enum: ["architecture", "none"],
+						description:
+							"Extra completeness checks; use architecture after /canvas builds",
+					},
+					contrast: {
+						type: "boolean",
+						description:
+							"Force WCAG AA contrast checks (default on for architecture recipe)",
+					},
+				},
+			},
+			output: textOutput(),
+			async execute(args, exec) {
+				const a = args as {
+					board?: string;
+					repair?: boolean;
+					recipe?: "architecture" | "none";
+					contrast?: boolean;
+				};
+				const doc = await boardOf(exec, a.board);
+				const result = validateBoardRecords(doc.records, {
+					repair: a.repair === true,
+					recipe: a.recipe ?? "none",
+					contrast: a.contrast,
+				});
+				let revision = doc.revision;
+				if (a.repair === true && (result.repaired?.length ?? 0) > 0) {
+					const snap = services.boards.applyDiff(doc.id, {
+						put: result.repaired,
+						actor: "agent",
+						clientTime: Date.now(),
+					});
+					revision = snap.revision;
+					const again = validateBoardRecords(snap.records, {
+						recipe: a.recipe ?? "none",
+						contrast: a.contrast,
+					});
+					return {
+						board: doc.slug,
+						revision,
+						repairedCount: result.repaired?.length ?? 0,
+						...again,
+					};
+				}
+				return {
+					board: doc.slug,
+					revision,
+					repairedCount: 0,
+					...result,
+					repaired: undefined,
+				};
+			},
+		},
+		{
+			name: "board_generate_image",
+			description:
+				"Generate an image with OpenAI Images 2.6 and place it on the board (and/or return a markdown URL for card bodies). Requires OPENAI_API_KEY or Buildboard openaiApiKey setting.",
+			parameters: {
+				type: "object",
+				required: ["prompt"],
+				properties: {
+					board: { type: "string" },
+					prompt: { type: "string" },
+					x: { type: "number" },
+					y: { type: "number" },
+					w: { type: "number" },
+					h: { type: "number" },
+					placeOnBoard: {
+						type: "boolean",
+						description: "Put a tldraw image shape on the board (default true)",
+					},
+					model: {
+						type: "string",
+						enum: ["gpt-image-2.6-sunburst", "gpt-image-2.6-flare"],
+					},
+				},
+			},
+			output: textOutput(),
+			async execute(args, exec) {
+				const a = args as {
+					board?: string;
+					prompt: string;
+					x?: number;
+					y?: number;
+					w?: number;
+					h?: number;
+					placeOnBoard?: boolean;
+					model?: string;
+				};
+				const doc = await boardOf(exec, a.board);
+				const workspace = services.resolveWorkspace(exec);
+				if (!workspace) {
+					throw new Error("board_generate_image requires a workspace");
+				}
+				const imageSettings = services.getImageSettings?.() ?? {
+					openaiApiKey: "",
+					openaiImageModel: normalizeImageModel(undefined),
+				};
+				const auth = resolveImageAuth({
+					settingsKey: imageSettings.openaiApiKey,
+					settingsModel: a.model ?? imageSettings.openaiImageModel,
+				});
+				if (!auth.apiKey) {
+					return {
+						ok: false,
+						error: "openai_api_key_missing",
+						setup: IMAGE_SETUP_HINT,
+						model: auth.model,
+					};
+				}
+				const generated = await generateOpenAIImage({
+					prompt: a.prompt,
+					apiKey: auth.apiKey,
+					model: auth.model,
+				});
+				const written = await writeGeneratedAsset({
+					bytes: generated.bytes,
+					assetsDir: projectAssetsDir(workspace),
+				});
+				const w = typeof a.w === "number" ? a.w : 512;
+				const h = typeof a.h === "number" ? a.h : 512;
+				const placeOnBoard = a.placeOnBoard !== false;
+				let revision = doc.revision;
+				let shapeId: string | undefined;
+				let assetId: string | undefined;
+				if (placeOnBoard) {
+					assetId = `asset:${written.id}`;
+					shapeId = `shape:${written.id}`;
+					const records = buildImageShapeRecords({
+						assetId,
+						shapeId,
+						src: written.apiPath,
+						w,
+						h,
+						x: a.x ?? 0,
+						y: a.y ?? 0,
+						name: `${written.id}.png`,
+					});
+					const snap = services.boards.applyDiff(doc.id, {
+						put: Object.values(records),
+						actor: "agent",
+						clientTime: Date.now(),
+					});
+					revision = snap.revision;
+				}
+				return {
+					ok: true,
+					board: doc.slug,
+					revision,
+					model: generated.model,
+					keySource: auth.source,
+					assetPath: written.absolutePath,
+					markdownUrl: written.markdownUrl,
+					markdown: `![${a.prompt.slice(0, 80)}](${written.markdownUrl})`,
+					shapeId,
+					assetId,
+				};
 			},
 		},
 		{

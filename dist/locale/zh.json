@@ -25,5 +25,8 @@
     "settings.maxBoards": "画板上限",
     "settings.pollIntervalMs": "轮询间隔（毫秒）",
     "settings.tldrawLicenseKey": "tldraw 许可证密钥",
+    "settings.openaiApiKey": "OpenAI API 密钥（图片）",
+    "settings.openaiImageModel": "OpenAI 图片模型",
+    "settings.openaiHelp": "图片优先使用环境变量 OPENAI_API_KEY；否则用此密钥。默认模型：gpt-image-2.6-sunburst（或 gpt-image-2.6-flare）。",
     "settings.error": "无法保存设置"
 }

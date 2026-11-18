@@ -2,7 +2,7 @@
 # Publish the workstation snapshot of dsh-buildboard to GitHub.
 set -euo pipefail
 root=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
-workstation=$(cd -- "$root/../.." && pwd -P)
+workstation=$(cd -- "$root/../../.." && pwd -P)
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
 

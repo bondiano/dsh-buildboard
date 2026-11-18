@@ -15,7 +15,7 @@ const { name } = JSON.parse(
  * single-chunk build still inlines.
  */
 export default defineConfig({
-	entry: { client: "src/client/index.ts" },
+	entry: { client: "src/presentation/client/index.ts" },
 	platform: "browser",
 	format: "cjs",
 	target: "es2022",

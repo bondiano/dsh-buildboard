@@ -19,9 +19,14 @@ export function buildCanvasBrief(input) {
         "Architecture recipe (use when the request is about architecture or when using the default):",
         "- Create frames for layers or subsystems.",
         "- One card per component: role, key files, [[wiki-links]] to related cards.",
-        "- Arrows with labels for data flow and dependencies.",
+        "- Arrows with labels for data flow and dependencies — only via board_connect (both ends bound).",
+        "- Every arrow end must touch its target block; unbound or floating arrows are errors.",
+        "- Keep WCAG AA contrast for shape colors and card chrome (title/excerpt/kind).",
+        "- When a diagram needs an illustration, call board_generate_image (gpt-image-2.6-sunburst by default) and place it on the board; embed the returned markdown in related cards.",
+        "- If board_generate_image returns openai_api_key_missing, tell the user to set OPENAI_API_KEY or Buildboard settings openaiApiKey / openaiImageModel — do not invent a key.",
         '- A card titled "What changed in this session".',
         "- Call board_layout when shapes overlap.",
+        '- Before finishing, call board_validate with recipe "architecture" (use repair true if base fields are missing). Fix contrast, unbound arrows, and non-touching arrow ends, then stop.',
     ]
         .filter((line) => line !== undefined)
         .join("\n");
@@ -46,6 +51,7 @@ export function buildRunBrief(input) {
             ? "Deep-research the topic. Create finding cards, link them on the board, then call run_report."
             : "Implement the described work in the workspace. Update task cards, then call run_report.",
         "Edits on the board are marked agent until the user touches them.",
+        "Arrows must use board_connect; keep WCAG AA contrast; use board_generate_image when an illustration helps.",
     ].join("\n");
 }
 export { DEFAULT_REQUEST as DEFAULT_CANVAS_REQUEST };

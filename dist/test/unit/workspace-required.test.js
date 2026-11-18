@@ -7,7 +7,7 @@ import { BoardRegistry } from "../../src/application/board-document.js";
 import { CardLibrary } from "../../src/application/card-library.js";
 import { RunService } from "../../src/application/run-service.js";
 import { WORKSPACE_REQUIRED, WORKSPACE_REQUIRED_HINT, WORKSPACE_REQUIRED_MESSAGE, } from "../../src/domain/route.js";
-import { respondBuildboard } from "../../src/host/routes.js";
+import { respondBuildboard } from "../../src/presentation/routes.js";
 test("board create without workspace throws stable message", async () => {
     const boards = new BoardRegistry();
     await assert.rejects(() => boards.create({ title: "Main", slug: "main" }), (error) => error instanceof Error && error.message === WORKSPACE_REQUIRED_MESSAGE);

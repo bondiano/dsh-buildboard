@@ -11,7 +11,7 @@ process.env.DSH_HOME = dshHome;
 const root = join(new URL("../../..", import.meta.url).pathname);
 const { apply } = await import(pathToFileURL(join(root, "dist/index.js")).href);
 const { handleBuildboardHttp } = await import(
-	pathToFileURL(join(root, "dist/src/host/routes.js")).href
+	pathToFileURL(join(root, "dist/src/presentation/routes.js")).href
 );
 
 const tools = [];
