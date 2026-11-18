@@ -86,15 +86,16 @@ const routeServices = {
     resolveWorkspace: () => workspace,
     ensureSessionWorkspace: async () => workspace,
 };
-const server = createServer(async (req, res) => {
-    if (req.url?.startsWith("/plugin-api/buildboard")) {
-        res.setHeader("access-control-allow-origin", "*");
-        await handleBuildboardHttp(routeServices, req, res);
-        return;
-    }
-    if (req.url === "/" || req.url?.startsWith("/index")) {
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end(`<!doctype html>
+const server = createServer((req, res) => {
+    void (async () => {
+        if (req.url?.startsWith("/plugin-api/buildboard")) {
+            res.setHeader("access-control-allow-origin", "*");
+            await handleBuildboardHttp(routeServices, req, res);
+            return;
+        }
+        if (req.url === "/" || req.url?.startsWith("/index")) {
+            res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+            res.end(`<!doctype html>
 <html><head><meta charset="utf-8"/><title>Buildboard demo</title>
 <style>
 body{margin:0;font-family:ui-sans-serif,system-ui;background:#111;color:#eee}
@@ -116,10 +117,11 @@ h1{font-size:18px;margin:0 0 12px}
 </main>
 <aside><h1>Runs</h1><div class="card">canvas · running</div></aside>
 </div></body></html>`);
-        return;
-    }
-    res.writeHead(404);
-    res.end("not found");
+            return;
+        }
+        res.writeHead(404);
+        res.end("not found");
+    })();
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const address = server.address();

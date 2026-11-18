@@ -1,5 +1,10 @@
 import { checkArrowEnd } from "./arrow-geometry.js";
 import { normalizeShapeRecord, type BoardRecord } from "./board.js";
+import { bindBoardUnderlays } from "./board-prettify.js";
+import {
+	bindShapesToUnderlays,
+	underlayShapesFromRecords,
+} from "./board-underlays.js";
 import {
 	validateCardChromeContrast,
 	validateTldrawNamedColor,
@@ -99,7 +104,7 @@ export function validateBoardRecords(
 ): BoardValidationResult {
 	const errors: BoardIssue[] = [];
 	const warnings: BoardIssue[] = [];
-	const repaired: BoardRecord[] = [];
+	let repaired: BoardRecord[] = [];
 	const recipe = options.recipe ?? "none";
 	const checkContrast =
 		options.contrast === true ||
@@ -224,6 +229,28 @@ export function validateBoardRecords(
 			const after = JSON.stringify(fixed);
 			if (before !== after) repaired.push(fixed);
 		}
+	}
+
+	const looseBindings = bindShapesToUnderlays(
+		underlayShapesFromRecords(records),
+	);
+	for (const binding of looseBindings) {
+		warnings.push({
+			code: "loose_underlay_child",
+			severity: "warning",
+			id: binding.id,
+			message: `shape ${binding.id} sits on frame ${binding.parentId} but is not parented to it — Prettify will reparent; set parentId when creating cards on underlays`,
+		});
+	}
+	if (options.repair && looseBindings.length > 0) {
+		const bound = bindBoardUnderlays(records);
+		const byId = new Map(repaired.map((r) => [String(r.id), r] as const));
+		for (const record of bound) {
+			const id = String(record.id);
+			const prev = byId.get(id);
+			byId.set(id, prev ? { ...prev, ...record, id } : record);
+		}
+		repaired = [...byId.values()];
 	}
 
 	if (pages === 0) {

@@ -113,7 +113,7 @@ export function buildBuildboardTools(
 		{
 			name: "board_create_shape",
 			description:
-				"Create a shape record on the board (card, note, text, frame, arrow, …).",
+				"Create a shape record on the board (card, note, text, frame, arrow, …). Set parentId to a frame id so cards stay on that underlay (required for Prettify grouping).",
 			parameters: {
 				type: "object",
 				required: ["type"],
@@ -124,6 +124,11 @@ export function buildBuildboardTools(
 					y: { type: "number" },
 					props: { type: "object" },
 					id: { type: "string" },
+					parentId: {
+						type: "string",
+						description:
+							"page:page (default) or shape:<frameId> when placing a card on an underlay",
+					},
 				},
 			},
 			output: textOutput(),
@@ -135,9 +140,14 @@ export function buildBuildboardTools(
 					y?: number;
 					props?: Record<string, unknown>;
 					id?: string;
+					parentId?: string;
 				};
 				const doc = await boardOf(exec, a.board);
 				const id = a.id ?? `shape:${createId()}`;
+				const parentId =
+					typeof a.parentId === "string" && a.parentId.length > 0
+						? a.parentId
+						: "page:page";
 				const record = {
 					id,
 					typeName: "shape",
@@ -148,7 +158,7 @@ export function buildBuildboardTools(
 					opacity: 1,
 					isLocked: false,
 					props: a.props ?? {},
-					parentId: "page:page",
+					parentId,
 					index: "a1",
 					meta: {},
 				};
@@ -279,7 +289,7 @@ export function buildBuildboardTools(
 		{
 			name: "board_layout",
 			description:
-				'Layout shapes: mode "prettify" (Sugiyama flow by arrows, default) or "grid". Omit ids to prettify the whole board.',
+				'Layout shapes: mode "prettify" (Sugiyama flow by arrows; binds cards onto frames they sit on) or "grid". Omit ids to prettify the whole board.',
 			parameters: {
 				type: "object",
 				properties: {
@@ -289,7 +299,7 @@ export function buildBuildboardTools(
 						type: "string",
 						enum: ["prettify", "grid"],
 						description:
-							"prettify = flow layout (default); grid = simple columns",
+							"prettify = flow layout + underlay bind (default); grid = simple columns",
 					},
 					columns: { type: "number" },
 					gap: { type: "number" },
@@ -324,6 +334,7 @@ export function buildBuildboardTools(
 					return {
 						mode,
 						laidOut: put.length,
+						bound: result.bound,
 						revision: snap.revision,
 					};
 				}

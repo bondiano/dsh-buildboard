@@ -71,6 +71,7 @@ test("canvas brief defaults to architecture request", () => {
 	assert.match(brief, /board_validate/);
 	assert.match(brief, /board_generate_image/);
 	assert.match(brief, /contrast|WCAG/i);
+	assert.match(brief, /parentId/);
 });
 
 test("validateBoardRecords flags missing rotation and repairs", () => {

@@ -19,10 +19,11 @@ export const inject = ["tools", "systemPrompt"];
 export const BUILDBOARD_GUIDANCE = `DSH Buildboard is active: cards and boards live in the Buildboard tab (and the fullscreen Buildboard panel).
 - Read first: board_get_state / board_query / card_list / card_read / card_search.
 - Edit surgically with board_create_shape, board_update_shape, board_delete_shape, board_connect, board_layout, board_generate_image, card_write.
+- Underlays: create frames first, then create cards with parentId = that frame id (x/y relative to the frame). Prettify / board_layout bind loose cards onto frames they sit on, then layout hierarchically — without parentId, grouping breaks.
 - Arrows must bind both ends (use board_connect); unbound or non-touching arrows fail board_validate.
 - Colors must meet WCAG AA (including card chrome). board_validate checks contrast on architecture recipe.
 - Illustrate with board_generate_image (OpenAI Images 2.6); embed returned markdown in cards when useful. If openai_api_key_missing, tell the user to set OPENAI_API_KEY or Buildboard openaiApiKey.
-- After building or repairing a board, call board_validate (recipe "architecture" for /canvas). Use repair true for missing rotation/opacity/isLocked/card props.
+- After building or repairing a board, call board_validate (recipe "architecture" for /canvas). Use repair true for missing rotation/opacity/isLocked/card props and loose underlay children.
 - Edits appear live and are marked "agent" until the user touches the same shape.
 - Project data: <workspace>/.buildboard/; global cards: $DSH_HOME/buildboard/.
 - /canvas builds a board about the current session; Research/Implement start runs — call run_report when done.

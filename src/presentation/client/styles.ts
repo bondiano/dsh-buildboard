@@ -111,8 +111,19 @@ export const BUILDBOARD_STYLES = `
 }
 .dsh-bb-page-menu {
 	position: relative;
-	z-index: 3;
+	z-index: 300;
 	pointer-events: all;
+}
+.dsh-bb-page-menu-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 301;
+	appearance: none;
+	border: 0;
+	padding: 0;
+	margin: 0;
+	background: transparent;
+	cursor: default;
 }
 .dsh-bb-page-menu-trigger {
 	display: inline-flex;
@@ -148,6 +159,7 @@ export const BUILDBOARD_STYLES = `
 	position: absolute;
 	top: calc(100% + 6px);
 	left: 0;
+	z-index: 302;
 	min-width: 240px;
 	max-width: 320px;
 	max-height: 320px;
@@ -158,6 +170,7 @@ export const BUILDBOARD_STYLES = `
 	color: var(--color-text, #111);
 	box-shadow: 0 8px 24px rgba(0,0,0,.18);
 	padding: 6px;
+	pointer-events: all;
 }
 .dsh-bb-page-menu-item {
 	display: flex;

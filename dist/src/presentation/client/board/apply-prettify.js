@@ -1,8 +1,9 @@
 /**
  * Apply Sugiyama prettify to the live tldraw editor.
  * Selection (≥2 shapes) scopes the layout; otherwise the whole page.
+ * Cards sitting on frames are bound as children before layout.
  */
-import { prettifyGraph, } from "../../../domain/board-prettify.js";
+import { prettifyShapesWithUnderlays, } from "../../../domain/board-prettify.js";
 function shapeSize(shape) {
     const props = shape.props;
     const w = typeof props["w"] === "number"
@@ -36,19 +37,23 @@ export function applyBoardPrettify(editor, options = {}) {
     });
     const scoped = selected.length >= 2;
     const scopeIds = scoped ? new Set(selected) : undefined;
-    const nodes = [];
-    const edges = [];
+    const underlays = [];
     const byId = new Map(shapes.map((s) => [s.id, s]));
     for (const shape of shapes) {
         if (shape.type === "arrow")
             continue;
-        if (!String(shape.parentId).startsWith("page:"))
-            continue;
-        if (scopeIds && !scopeIds.has(shape.id))
-            continue;
         const { w, h } = shapeSize(shape);
-        nodes.push({ id: shape.id, w, h });
+        underlays.push({
+            id: shape.id,
+            type: shape.type,
+            parentId: String(shape.parentId),
+            x: shape.x,
+            y: shape.y,
+            w,
+            h,
+        });
     }
+    const edges = [];
     for (const shape of shapes) {
         if (shape.type !== "arrow")
             continue;
@@ -57,30 +62,53 @@ export function applyBoardPrettify(editor, options = {}) {
         const to = bindingId(props["end"]);
         if (!from || !to)
             continue;
-        if (scopeIds && (!scopeIds.has(from) || !scopeIds.has(to)))
-            continue;
         if (!byId.has(from) || !byId.has(to))
             continue;
+        if (scopeIds) {
+            const fromShape = byId.get(from);
+            const toShape = byId.get(to);
+            const fromOk = scopeIds.has(from) ||
+                (fromShape !== undefined && scopeIds.has(String(fromShape.parentId)));
+            const toOk = scopeIds.has(to) ||
+                (toShape !== undefined && scopeIds.has(String(toShape.parentId)));
+            if (!fromOk || !toOk)
+                continue;
+        }
         edges.push({ from, to });
     }
-    const originX = scoped
-        ? Math.min(...nodes.map((n) => byId.get(n.id)?.x ?? 0), Number.POSITIVE_INFINITY)
-        : 0;
-    const originY = scoped
-        ? Math.min(...nodes.map((n) => byId.get(n.id)?.y ?? 0), Number.POSITIVE_INFINITY)
-        : 0;
-    const result = prettifyGraph(nodes, edges, {
+    const result = prettifyShapesWithUnderlays(underlays, edges, {
         ...options,
-        originX: Number.isFinite(originX) ? originX : 0,
-        originY: Number.isFinite(originY) ? originY : 0,
+        onlyIds: scopeIds ? [...scopeIds] : undefined,
     });
     const updates = result.placements.flatMap((p) => {
         const shape = byId.get(p.id);
         if (!shape)
             return [];
-        if (shape.x === p.x && shape.y === p.y)
+        const patch = {
+            id: p.id,
+            type: shape.type,
+            x: p.x,
+            y: p.y,
+        };
+        if (p.parentId && p.parentId !== shape.parentId) {
+            patch["parentId"] = p.parentId;
+        }
+        if (shape.type === "frame" && (p.w !== undefined || p.h !== undefined)) {
+            const props = { ...shape.props };
+            if (p.w !== undefined)
+                props["w"] = p.w;
+            if (p.h !== undefined)
+                props["h"] = p.h;
+            patch["props"] = props;
+        }
+        const samePos = shape.x === p.x && shape.y === p.y;
+        const sameParent = !p.parentId || p.parentId === shape.parentId;
+        const props = shape.props;
+        const sameSize = (p.w === undefined || props["w"] === p.w) &&
+            (p.h === undefined || props["h"] === p.h);
+        if (samePos && sameParent && sameSize)
             return [];
-        return [{ id: p.id, type: shape.type, x: p.x, y: p.y }];
+        return [patch];
     });
     if (updates.length > 0) {
         editor.markHistoryStoppingPoint?.("buildboard-prettify");
@@ -94,6 +122,7 @@ export function applyBoardPrettify(editor, options = {}) {
     }
     return {
         moved: updates.length,
+        bound: result.bound,
         scoped: scoped ? "selection" : "page",
     };
 }

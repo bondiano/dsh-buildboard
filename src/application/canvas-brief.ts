@@ -27,16 +27,17 @@ export function buildCanvasBrief(input: CanvasBriefInput): string {
 		"Do not dump a long explanation in chat — reply with one short line linking to the board.",
 		"",
 		"Architecture recipe (use when the request is about architecture or when using the default):",
-		"- Create frames for layers or subsystems.",
+		"- Create frames for layers or subsystems (these are underlays).",
 		"- One card per component: role, key files, [[wiki-links]] to related cards.",
+		"- Parent every card onto its frame: board_create_shape with parentId = the frame id and x/y relative to that frame. Spatial-only placement without parentId breaks Prettify grouping.",
 		"- Arrows with labels for data flow and dependencies — only via board_connect (both ends bound).",
 		"- Every arrow end must touch its target block; unbound or floating arrows are errors.",
 		"- Keep WCAG AA contrast for shape colors and card chrome (title/excerpt/kind).",
 		"- When a diagram needs an illustration, call board_generate_image (gpt-image-2.6-sunburst by default) and place it on the board; embed the returned markdown in related cards.",
 		"- If board_generate_image returns openai_api_key_missing, tell the user to set OPENAI_API_KEY or Buildboard settings openaiApiKey / openaiImageModel — do not invent a key.",
 		'- A card titled "What changed in this session".',
-		"- Call board_layout (mode prettify) when shapes overlap or arrows tangle; users can also use burger → Prettify layout.",
-		'- Before finishing, call board_validate with recipe "architecture" (use repair true if base fields are missing). Fix contrast, unbound arrows, and non-touching arrow ends, then stop.',
+		"- Call board_layout (mode prettify) when shapes overlap or arrows tangle; it binds loose cards onto underlays then lays out frames and children. Users can also use burger → Prettify layout.",
+		'- Before finishing, call board_validate with recipe "architecture" (use repair true if base fields are missing or cards sit on frames without parentId). Fix contrast, unbound arrows, and non-touching arrow ends, then stop.',
 	]
 		.filter((line) => line !== undefined)
 		.join("\n");
